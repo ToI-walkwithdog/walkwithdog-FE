@@ -13,7 +13,7 @@ Run `npm run typecheck` to check TypeScript. Location and map packages are confi
 
 ## Structure
 
-- `src/app/` – Expo Router route files; each numbered route re-exports a screen component.
+- `app/` – Expo Router route files; each numbered route re-exports a screen component.
 - `src/screens/` – placeholder screen modules grouped by flow.
 - `src/components/` – shared `Icon` and `Screen` components.
 - `src/assets/icons/`, `src/assets/images/` – Step 1 assets (preserved).
