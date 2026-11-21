@@ -1,0 +1,23 @@
+<svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="19" height="19" fill="#BCAE9F"/>
+<g id="walking">
+<rect width="375" height="812" transform="translate(-231.861 -466.102)" fill="url(#paint0_linear_0_1)"/>
+<g id="&#236;&#130;&#176;&#236;&#177;&#133; &#236;&#167;&#128;&#235;&#143;&#132;">
+<rect x="-215.861" y="-404.102" width="343" height="634" rx="30" fill="#FDF3E7"/>
+<g id="&#236;&#130;&#176;&#236;&#177;&#133; &#234;&#178;&#189;&#235;&#161;&#156;">
+<g id="iconStart">
+<g id="iconStart_2">
+<circle id="Ellipse 1" cx="9.27745" cy="9.27842" r="1.99132" fill="#84521A"/>
+<circle id="Ellipse 2" cx="9.27759" cy="9.27832" r="6.37221" stroke-width="3.98263" stroke="#84521A"/>
+</g>
+</g>
+</g>
+</g>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_1" x1="187.5" y1="0" x2="187.5" y2="812" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FFFAEB"/>
+<stop offset="1" stop-color="white"/>
+</linearGradient>
+</defs>
+</svg>

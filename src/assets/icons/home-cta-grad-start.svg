@@ -1,0 +1,9 @@
+<svg width="89" height="107" viewBox="0 0 89 107" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="home-cta-grad-bottom" x1="44.5" y1="0" x2="44.5" y2="107" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFCE8C"/>
+      <stop offset="1" stop-color="#FDE8C9" stop-opacity="0.39"/>
+    </linearGradient>
+  </defs>
+  <path d="M0 0H89V107H0V0Z" fill="url(#home-cta-grad-bottom)"/>
+</svg>

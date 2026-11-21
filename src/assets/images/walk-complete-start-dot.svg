@@ -1,0 +1,28 @@
+<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="15" height="15" fill="#BCAE9F"/>
+<g id="walking complete2">
+<rect width="375" height="836" transform="translate(-199.5 -397.5)" fill="url(#paint0_linear_0_1)"/>
+<g id="&#236;&#130;&#176;&#236;&#177;&#133; &#236;&#153;&#132;&#235;&#163;&#140; &#194;&#183; &#236;&#138;&#164;&#237;&#129;&#172;&#235;&#161;&#164; &#235;&#130;&#180;&#236;&#154;&#169;">
+<rect width="375" height="836" transform="translate(-199.5 -397.5)" fill="url(#paint1_linear_0_1)"/>
+<g id="&#236;&#130;&#176;&#236;&#177;&#133; &#234;&#184;&#176;&#235;&#161;&#157; &#236;&#185;&#180;&#235;&#147;&#156;">
+<g id="&#234;&#178;&#189;&#235;&#161;&#156; &#236;&#154;&#148;&#236;&#149;&#189; &#236;&#185;&#180;&#235;&#147;&#156;">
+<rect x="-183.5" y="-275.5" width="343" height="425" rx="30" fill="white"/>
+<g id="&#236;&#160;&#132;&#236;&#178;&#180; &#236;&#130;&#176;&#236;&#177;&#133; &#234;&#178;&#189;&#235;&#161;&#156;">
+<rect width="343" height="332" transform="translate(-183.5 -275.5)" fill="#FDF3E7"/>
+<circle id="&#236;&#182;&#156;&#235;&#176;&#156; &#236;&#167;&#128;&#236;&#160;&#144;" cx="7.5" cy="7.5" r="6" fill="#84521A" stroke-width="3" stroke="white"/>
+</g>
+</g>
+</g>
+</g>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_1" x1="187.5" y1="0" x2="187.5" y2="836" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FFFAEB"/>
+<stop offset="1" stop-color="white"/>
+</linearGradient>
+<linearGradient id="paint1_linear_0_1" x1="187.5" y1="0" x2="187.5" y2="836" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FFFAEB"/>
+<stop offset="1" stop-color="white"/>
+</linearGradient>
+</defs>
+</svg>

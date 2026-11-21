@@ -1,0 +1,13 @@
+<svg width="41" height="32" viewBox="0 0 41 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="41" height="32" fill="#BCAE9F"/>
+<g id="walking complete3 - if levelup">
+<rect width="375" height="812" transform="translate(-19.4551 -273.481)" fill="white"/>
+<path id="Vector 9" opacity="0.83" d="M35.6999 30.6522C27.5213 -7.28375 11.2887 5.088 4.19478 16.0159" stroke-width="10" stroke="url(#paint0_linear_0_1)"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_1" x1="5.57675" y1="22.426" x2="32.6673" y2="16.5856" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F9137D"/>
+<stop offset="1" stop-color="#F69A2B"/>
+</linearGradient>
+</defs>
+</svg>

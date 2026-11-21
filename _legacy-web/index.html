@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>이어주개 - 홈</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Hello,</p>
+          <h1>Glow!</h1>
+        </div>
+        <button class="profile-button" aria-label="프로필 열기">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="8" r="3.25"></circle>
+            <path d="M5.5 20c.55-4.1 3-6.15 6.5-6.15S17.95 15.9 18.5 20"></path>
+          </svg>
+        </button>
+      </header>
+
+      <section class="actions" aria-label="산책하기">
+        <button class="action-card">
+          <span class="action-icon orange" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path d="M9 7.5v17M23 7.5v17M9 12h14M9 20h14"></path>
+            </svg>
+          </span>
+          <span>
+            <strong>산책 예약하기</strong>
+            <small>Meet your walking buddy</small>
+          </span>
+        </button>
+        <button class="action-card">
+          <span class="action-icon blue" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path d="M16 27s8-7.1 8-14a8 8 0 1 0-16 0c0 6.9 8 14 8 14Z"></path>
+              <circle cx="16" cy="13" r="3"></circle>
+            </svg>
+          </span>
+          <span>
+            <strong>산책 시작하기</strong>
+            <small>Start perfect walk</small>
+          </span>
+        </button>
+      </section>
+
+      <section class="today">
+        <div class="section-heading">
+          <h2>내 예약 현황</h2>
+          <button aria-label="예약 현황 전체 보기">전체 보기 <span>›</span></button>
+        </div>
+
+        <article class="walk-card">
+          <div class="walk-card-main">
+            <div>
+              <p class="label">종료됨</p>
+              <p class="walk-time">24.15</p>
+            </div>
+            <div>
+              <p class="label">이름</p>
+              <p class="walk-place">은여울 보리 보</p>
+            </div>
+            <div>
+              <p class="label">소요 시간</p>
+              <p class="walk-place">1.8km</p>
+            </div>
+          </div>
+          <div class="walk-card-progress">
+            <span>산책한 시간</span>
+            <strong>18분</strong>
+            <div class="progress"><i></i></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="courses">
+        <div class="section-heading">
+          <h2>추천 산책 코스</h2>
+          <button aria-label="추천 코스 전체 보기">전체 보기 <span>›</span></button>
+        </div>
+
+        <div class="course-list">
+          <article class="course-card">
+            <div class="course-thumb">
+              <img src="3d_dog.png" alt="" />
+            </div>
+            <div class="course-copy">
+              <p>공원 산책</p>
+              <strong>한강로 뚝방길 코스</strong>
+              <small>약 13km · 2시간 30분</small>
+            </div>
+            <span class="distance">3.2 km</span>
+          </article>
+          <article class="course-card">
+            <div class="course-thumb green">
+              <svg viewBox="0 0 80 80" aria-hidden="true">
+                <path d="M40 66V24M40 34c-9-9-18-8-22-2 7 8 14 9 22 2Zm0 10c9-9 18-8 22-2-7 8-14 9-22 2Z"></path>
+              </svg>
+            </div>
+            <div class="course-copy">
+              <p>반려동물 동반</p>
+              <strong>조이숲 산책로</strong>
+              <small>약 2km · 30분</small>
+            </div>
+            <span class="distance">0.5 km</span>
+          </article>
+        </div>
+      </section>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>

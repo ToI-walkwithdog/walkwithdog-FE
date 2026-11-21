@@ -1,0 +1,15 @@
+<svg width="90" height="107" viewBox="0 0 90 107" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="90" height="107" fill="#BCAE9F"/>
+<g id="home">
+<rect width="375" height="1133" transform="translate(-259 -210)" fill="white"/>
+<g id="CTA">
+<path id="grad" d="M0 53.5C0 23.9528 23.9528 0 53.5 0H60C76.5685 0 90 13.4315 90 30V77C90 93.5685 76.5685 107 60 107H53.5C23.9528 107 0 83.0472 0 53.5V53.5Z" fill="url(#paint0_linear_0_1)"/>
+</g>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_1" x1="45" y1="0" x2="45" y2="107" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FFCE8C"/>
+<stop offset="1" stop-color="#FDE8C9" stop-opacity="0.39"/>
+</linearGradient>
+</defs>
+</svg>

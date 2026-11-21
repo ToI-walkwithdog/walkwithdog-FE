@@ -1,0 +1,15 @@
+<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="14" height="14" fill="#BCAE9F"/>
+<g id="home">
+<rect width="375" height="1133" transform="translate(-247 -219)" fill="white"/>
+<g id="CTA">
+<circle id="dot_grad" cx="7" cy="7" r="7" fill="url(#paint0_linear_0_1)"/>
+</g>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_1" x1="7" y1="0" x2="7" y2="14" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FFC678"/>
+<stop offset="1" stop-color="#FFE0B6"/>
+</linearGradient>
+</defs>
+</svg>

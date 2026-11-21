@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "walkingwithdog",
+    "slug": "walkingwithdog",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "walkingwithdog",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "이어주개에서 산책 위치를 확인하는 데 위치 정보가 필요합니다."
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}

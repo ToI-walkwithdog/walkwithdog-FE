@@ -1,0 +1,153 @@
+:root {
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color: #252525;
+  background: #f4f4f4;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: start center;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.7), transparent 32%),
+    #f2f2f2;
+}
+
+.app {
+  width: 375px;
+  min-height: 1133px;
+  padding: 24px 24px 32px;
+  background: #fff;
+  box-shadow: 0 16px 50px rgba(35, 35, 35, .08);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.topbar p { margin: 0 0 2px; }
+.topbar h1 { margin: 0; font-size: 26px; line-height: 1.1; letter-spacing: -1px; }
+.eyebrow { color: #ff7d1b; font-size: 16px; font-weight: 700; }
+
+.profile-button {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f2f4f7;
+  color: #6e7685;
+  cursor: pointer;
+}
+
+.profile-button svg { width: 25px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.action-card {
+  min-height: 112px;
+  padding: 14px 10px 12px;
+  border: 0;
+  border-radius: 18px;
+  background: #fafafa;
+  color: #252525;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.action-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.07); }
+.action-card strong { display: block; margin-top: 9px; font-size: 14px; }
+.action-card small { display: block; margin-top: 4px; color: #9a9a9a; font-size: 9px; }
+
+.action-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+}
+.action-icon svg { width: 23px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.action-icon.orange { background: #fff0df; color: #ff9b38; }
+.action-icon.blue { background: #eaf2ff; color: #799ad7; }
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.section-heading h2 { margin: 0; font-size: 16px; letter-spacing: -.4px; }
+.section-heading button { border: 0; background: none; color: #aaa; font-size: 11px; cursor: pointer; }
+.section-heading button span { margin-left: 4px; font-size: 17px; }
+
+.today { margin-bottom: 26px; }
+.walk-card {
+  border: 1px solid #efefef;
+  border-radius: 18px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 6px 16px rgba(0,0,0,.025);
+}
+.walk-card-main {
+  display: grid;
+  grid-template-columns: 80px 1fr 72px;
+  gap: 6px;
+  padding: 14px 12px 12px;
+}
+.walk-card-main p { margin: 0; }
+.label { color: #aaa; font-size: 9px; }
+.walk-time { margin-top: 5px !important; color: #222; font-size: 18px; font-weight: 800; }
+.walk-place { margin-top: 5px !important; font-size: 12px; font-weight: 700; }
+.walk-card-progress { height: 42px; display: grid; grid-template-columns: 1fr auto; align-content: center; padding: 7px 12px 8px; background: #fff7ec; font-size: 10px; color: #777; }
+.walk-card-progress strong { color: #ff8c28; }
+.progress { grid-column: 1 / -1; height: 3px; margin-top: 6px; border-radius: 4px; background: #f1dfc8; overflow: hidden; }
+.progress i { display: block; width: 68%; height: 100%; background: #ff9b38; }
+
+.course-list { display: grid; gap: 10px; }
+.course-card {
+  position: relative;
+  min-height: 84px;
+  display: grid;
+  grid-template-columns: 74px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 8px;
+  border: 1px solid #f0f0f0;
+  border-radius: 16px;
+  background: #fff;
+}
+.course-thumb {
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #f7b89c;
+  overflow: hidden;
+}
+.course-thumb img { width: 68px; height: 68px; object-fit: cover; }
+.course-thumb.green { background: #edf6d9; }
+.course-thumb svg { width: 58px; fill: none; stroke: #78a968; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.course-copy { min-width: 0; }
+.course-copy p { margin: 0 0 4px; color: #ff9b38; font-size: 9px; }
+.course-copy strong { display: block; margin-bottom: 5px; font-size: 12px; }
+.course-copy small { color: #aaa; font-size: 8px; }
+.distance { align-self: end; margin-bottom: 8px; color: #777; font-size: 9px; }
+
+@media (max-width: 430px) {
+  body { display: block; background: #fff; }
+  .app { width: 100%; min-height: 100vh; box-shadow: none; }
+}

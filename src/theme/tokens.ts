@@ -1,0 +1,158 @@
+export const colors = {
+  black: "#000000",
+  white: "#FFFFFF",
+  text: "#1A1A1A",
+  dark: "#333333",
+  brown: "#84521A",
+  brown2: "#A37F55",
+  brown3: "#A07545",
+  mildBrown: "#C28745",
+  mildLightBrown: "#C8AF93",
+  orange: "#F4A44A",
+  orange3: "#C36700",
+  deepOrange: "#FF9D30",
+  lightOrange: "#F7C27A",
+  midLightOrange: "#FFBA5D",
+  outer2: "#E4D5BF",
+  cream: "#FDF3E7",
+  onboardingGlowGold: "#F7B327",
+  onboardingGlowOrange: "#EF7E06",
+  onboardingButtonText: "#F8FAFF",
+  policyLinkBlue: "#2D6EFF",
+  onboardingSummaryBackground: "#FFF7E6",
+  onboardingSummaryBorder: "#FCD9A6",
+  onboardingSummaryText: "#7B3702",
+  pledgeText: "#954F00",
+  pledgeCardBackground: "rgba(255, 255, 255, 0.8)",
+  boxPurple: "#EEE1F0",
+  boxOtherGreen: "#C8EBD0",
+  translucentWhite: "rgba(255, 255, 255, 0.62)",
+  success: "#6A9B7A",
+  warning: "#C94C4C",
+  boxPink: "#FADADD",
+  peach: "#FDE8C8",
+  cardGradientStart: "#FFFAF5",
+  cardGradientEnd: "#FEF6E6",
+  homeGradientStart: "#FFCE8C",
+  homeGradientEnd: "rgba(253, 232, 201, 0.39)",
+  walkBackgroundStart: "#FFFAEB",
+  walkControlStart: "#FFD59C",
+  mapGradientStart: "#F3F7FA",
+  mapGradientEnd: "rgba(241, 245, 249, 0)",
+  reportRed: "#D50606",
+} as const;
+
+export const typography = {
+  fontSizes: {
+    caption: 10,
+    small: 12,
+    smallBody: 13,
+    body: 14,
+    bodyLarge: 15,
+    subtitle: 16,
+    mediumTitle: 17,
+    title: 20,
+    sectionTitle: 23,
+    screenHeading: 24,
+    permissionHeading: 26,
+    permissionSubheading: 21,
+    largeTitle: 25,
+    display: 28,
+    greeting: 30,
+    stepLabel: 18,
+    navigationLabel: 24,
+  },
+  fontWeights: {
+    regular: 400,
+    medium: 500,
+    bold: 700,
+    extraBold: 800,
+  },
+  lineHeightMultipliers: {
+    tight: 1.1,
+    snug: 1.2,
+    normal: 1.25,
+    relaxed: 1.45,
+    loose: 1.5,
+  },
+} as const;
+
+export const fonts = {
+  Pretendard: { weights: [400, 500] },
+  "Gumi Romance TTF": { weights: [400] },
+  "Noto Sans KR": { weights: [400, 700] },
+  NanumSquareRound: { weights: [400, 700, 800] },
+  Urbanist: { weights: [500] },
+} as const;
+
+export const radii = {
+  small: 12,
+  card: 16,
+  status: 20,
+  inputPill: 22,
+  navigation: 27,
+  chip: 25,
+  checkbox: 4,
+  sheet: 25,
+  large: 30,
+  control: 31,
+  pill: 100,
+} as const;
+
+export const shadows = {
+  onboardingSheet: {
+    offsetX: 1,
+    offsetY: 0,
+    blurRadius: 15,
+    spreadRadius: 0,
+    color: "rgba(0, 0, 0, 0.25)",
+  },
+  onboardingAction: {
+    offsetX: 0,
+    offsetY: 4,
+    blurRadius: 4,
+    spreadRadius: 0,
+    color: "rgba(0, 0, 0, 0.25)",
+  },
+  homeCard: {
+    offsetX: 4,
+    offsetY: 4,
+    blurRadius: 25,
+    spreadRadius: 0,
+    color: "rgba(0, 0, 0, 0.15)",
+  },
+  walkStatus: {
+    offsetX: 0,
+    offsetY: 7,
+    blurRadius: 12,
+    spreadRadius: 0,
+    color: "rgba(107, 71, 33, 0.1)",
+  },
+  walkAddButton: {
+    offsetX: 0,
+    offsetY: 4,
+    blurRadius: 12,
+    spreadRadius: 0,
+    color: "rgba(107, 71, 33, 0.16)",
+  },
+} as const;
+
+export const gradients = {
+  card: { direction: "to-bottom", start: colors.cardGradientStart, end: colors.cardGradientEnd },
+  homeCta: { direction: "to-bottom", start: colors.homeGradientStart, end: colors.homeGradientEnd },
+  walkBackground: { direction: "to-bottom", start: colors.walkBackgroundStart, end: colors.white },
+  walkPrimaryControl: { direction: "to-bottom", start: colors.walkControlStart, end: colors.midLightOrange },
+  mapOverlay: { direction: "to-top", start: colors.mapGradientStart, end: colors.mapGradientEnd },
+} as const;
+
+export const unresolvedFigmaVariables = ["main/card", "orange_gradi_btn", "map_background"] as const;
+
+export const tokens = {
+  colors,
+  typography,
+  fonts,
+  radii,
+  shadows,
+  gradients,
+  unresolvedFigmaVariables,
+} as const;

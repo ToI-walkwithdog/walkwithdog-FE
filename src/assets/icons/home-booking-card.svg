@@ -1,0 +1,9 @@
+<svg width="329" height="116" viewBox="0 0 329 116" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="home-booking-card-gradient" x1="164.5" y1="0" x2="164.5" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFAF5"/>
+      <stop offset="1" stop-color="#FEF6E6"/>
+    </linearGradient>
+  </defs>
+  <rect width="329" height="116" rx="16" fill="url(#home-booking-card-gradient)"/>
+</svg>
