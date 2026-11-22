@@ -12,6 +12,8 @@ npx expo start
 Run `npm run typecheck` to check TypeScript.
 Run `node --test tests\mockSessionLogic.test.mjs` with Node.js 24 to test the mock booking and walk-record logic.
 
+Volunteer app screen and backend handoff: [English](VOLUNTEER_HANDOFF_EN.md) · [한국어](VOLUNTEER_HANDOFF_KO.md).
+
 ## Shelter mobile web
 
 The separate `shelter-web` project contains a mobile web preview for shelter management. It uses the app's Pretendard files from `src/assets/fonts`, so build it within this repository. It uses in-memory demo data only; login, shelter verification, live tracking and backend operations are not connected. Changes are reset on refresh. Do not enter real personal data or account credentials.
