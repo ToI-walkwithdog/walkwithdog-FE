@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "expo-router";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
+import { availableBookings } from "../../data/availableBookings";
+import { dogs } from "../../data/dogs";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
-
-const kongiImage = require("../../assets/images/dog-kongi.png");
-const boriImage = require("../../assets/images/dog-bori.png");
 
 export type BookingCancellationScreenState =
   | "requested"
@@ -21,6 +21,11 @@ export function BookingCancellationScreen({
   state: BookingCancellationScreenState;
 }) {
   const router = useRouter();
+  const cancelling = useRef(false);
+  const { selectedBooking, cancelBooking } = useMockSession();
+  const dog = dogs.find((item) => item.id === selectedBooking?.dogId);
+  const option = availableBookings.find((item) => item.dogId === selectedBooking?.dogId);
+  if (!selectedBooking || !dog || !option) throw new Error("Selected booking is unavailable.");
   const [reason, setReason] = useState("일정이 변경되었어요");
 
   const isConfirmation = state === "confirmation";
@@ -40,7 +45,7 @@ export function BookingCancellationScreen({
             <Pressable
               accessibilityLabel="뒤로"
               accessibilityRole="button"
-              onPress={() => router.replace(isConfirmation ? "/8-6" : "/8-3")}
+              onPress={() => router.replace("/8-3")}
               style={styles.backButton}
             >
               <Icon
@@ -65,13 +70,13 @@ export function BookingCancellationScreen({
               <Image
                 accessible={false}
                 resizeMode="cover"
-                source={isCancelled ? boriImage : kongiImage}
+                source={dog.image}
                 style={styles.dogImage}
               />
               <View style={styles.dogInfo}>
-                <Text style={styles.dogName}>{isCancelled ? "보리" : "콩이"}</Text>
+                <Text style={styles.dogName}>{dog.name}</Text>
                 <Text style={styles.shelterName}>
-                  {isCancelled ? "우와 보호소" : "행복 보호소"}
+                  {option.shelterName}
                 </Text>
               </View>
               {isCancelled ? (
@@ -81,9 +86,7 @@ export function BookingCancellationScreen({
               ) : null}
             </View>
             <Text style={styles.schedule}>
-              {isCancelled
-                ? "11월 15일 · 15:00–16:00"
-                : "11월 12일 · 13:00–14:00"}
+              {selectedBooking.schedule.date} · {selectedBooking.schedule.time}
             </Text>
           </View>
 
@@ -91,13 +94,18 @@ export function BookingCancellationScreen({
             <>
               <View style={styles.noticeCard}>
                 <Text style={styles.noticeText}>
-                  취소하면 보호소에 바로 전달돼요. 다시 산책하려면 새로운 예약을 신청해야 해요.
+                  목업 취소는 앱에만 반영되며 보호소에 전달되지 않아요.
                 </Text>
               </View>
               <Pressable
                 accessibilityLabel="취소 사유"
                 accessibilityRole="button"
-                onPress={() => setReason("일정이 변경되었어요")}
+                onPress={() => Alert.alert("취소 사유", "사유를 선택해 주세요.", [
+                  { text: "일정이 변경되었어요", onPress: () => setReason("일정이 변경되었어요") },
+                  { text: "방문이 어려워요", onPress: () => setReason("방문이 어려워요") },
+                  { text: "선택 안 함", onPress: () => setReason("선택 안 함") },
+                  { text: "닫기", style: "cancel" },
+                ])}
                 style={styles.reasonCard}
               >
                 <Text style={styles.reasonTitle}>취소 사유 (선택)</Text>
@@ -112,7 +120,7 @@ export function BookingCancellationScreen({
             <View style={styles.noticeCard}>
               <Text style={styles.noticeText}>
                 {isCancelled
-                  ? "취소 내용이 보호소에 전달되었어요. 다른 일정으로 다시 만날 수 있어요."
+                  ? "취소 내용이 앱에만 반영되었어요. 보호소에는 전달되지 않았어요."
                   : "예약 취소 전 보호소 일정과 산책 준비 사항을 확인해 주세요."}
               </Text>
             </View>
@@ -134,9 +142,18 @@ export function BookingCancellationScreen({
               <Pressable
                 accessibilityLabel={isConfirmation ? "예약 취소하기" : "예약 취소 진행"}
                 accessibilityRole="button"
-                onPress={() =>
-                  router.push(isConfirmation ? "/8-8" : "/8-7")
-                }
+                onPress={() => {
+                  if (isConfirmation) {
+                    if (cancelling.current) return;
+                    if (selectedBooking.status !== "confirmed") {
+                      Alert.alert("취소할 수 없어요", "이미 취소되었거나 확정되지 않은 예약이에요.");
+                      return;
+                    }
+                    cancelling.current = true;
+                    cancelBooking();
+                  }
+                  router.replace(isConfirmation ? "/8-8" : "/8-7");
+                }}
                 style={styles.primaryAction}
               >
                 <Text style={styles.primaryActionText}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import {
+  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -12,6 +13,7 @@ import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
 import { availableBookings } from "../../data/availableBookings";
 import { dogs } from "../../data/dogs";
+import { useMockSession } from "../../context/MockSession";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
@@ -23,7 +25,8 @@ export function AvailableBookingsScreen({
   state: AvailableBookingsScreenState;
 }) {
   const router = useRouter();
-  const [sizeFilter, setSizeFilter] = useState<"전체" | "소형견" | "중형견" | "대형견">("전체");
+  const { selectDog, preferences } = useMockSession();
+  const [sizeFilter, setSizeFilter] = useState<"전체" | "소형견" | "중형견" | "대형견">(preferences?.size ?? "전체");
 
   useEffect(() => {
     if (state !== "loading") return;
@@ -133,7 +136,10 @@ export function AvailableBookingsScreen({
               accessibilityLabel={`${dog?.name ?? ""} 산책 예약 상세`}
               accessibilityRole="button"
               key={booking.dogId}
-              onPress={() => router.push("/7-3")}
+              onPress={() => {
+                selectDog(booking.dogId);
+                router.push("/7-3");
+              }}
               style={listStyles.card}
             >
               <View style={listStyles.profileRow}>
@@ -212,7 +218,7 @@ export function AvailableBookingsScreen({
       <Pressable
         accessibilityLabel="더보기"
         accessibilityRole="button"
-        onPress={() => console.log("더보기 tapped")}
+        onPress={() => Alert.alert("안내", "현재 조건에서 더 보여드릴 예약이 없어요.")}
         style={listStyles.moreButton}
       >
         <Text style={listStyles.moreText}>더보기</Text>

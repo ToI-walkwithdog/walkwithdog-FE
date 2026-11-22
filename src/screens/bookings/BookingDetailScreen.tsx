@@ -4,23 +4,31 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
 import { GradientView } from "../../components/GradientView";
+import { useMockSession } from "../../context/MockSession";
+import { availableBookings } from "../../data/availableBookings";
+import { dogs } from "../../data/dogs";
 import { gradientButtonWarm, gradientCardCream } from "../../theme/gradients";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
-
-const kongiImage = require("../../assets/images/dog-kongi.png");
+import { BookingCancellationScreen } from "./BookingCancellationScreen";
 
 export type BookingDetailScreenState =
   | "confirmed"
   | "pending"
   | "rejected";
 
-export function BookingDetailScreen({
-  state,
-}: {
+export function BookingDetailScreen(_: {
   state: BookingDetailScreenState;
 }) {
   const router = useRouter();
+  const { selectedBooking } = useMockSession();
+  const dog = dogs.find((item) => item.id === selectedBooking?.dogId);
+  const option = availableBookings.find((item) => item.dogId === selectedBooking?.dogId);
+  if (!selectedBooking || !dog || !option) throw new Error("Selected booking is unavailable.");
+  if (selectedBooking.status === "cancelled") {
+    return <BookingCancellationScreen state="cancelled" />;
+  }
+  const state = selectedBooking.status;
   const statusLabel =
     state === "confirmed"
       ? "예약 확정"
@@ -62,7 +70,7 @@ export function BookingDetailScreen({
         <View style={styles.body}>
           <Text style={styles.title}>
             {state === "confirmed"
-              ? "콩이와 만날 준비 되셨나요?"
+              ? `${dog.name}와 만날 준비 되셨나요?`
               : state === "pending"
                 ? "보호소의 확인을 기다려요"
                 : "아쉽게도 예약이 거절됐어요"}
@@ -73,21 +81,21 @@ export function BookingDetailScreen({
               <Image
                 accessible={false}
                 resizeMode="cover"
-                source={kongiImage}
+                source={dog.image}
                 style={styles.dogImage}
               />
               <View style={styles.dogInfo}>
-                <Text style={styles.dogName}>콩이</Text>
-                <Text style={styles.shelterName}>행복 보호소</Text>
+                <Text style={styles.dogName}>{dog.name}</Text>
+                <Text style={styles.shelterName}>{option.shelterName}</Text>
               </View>
               <View style={styles.statusBadge}>
                 <Text style={styles.statusText}>{statusLabel}</Text>
               </View>
             </View>
-            <Text style={styles.schedule}>11월 12일 · 13:00–14:00</Text>
+            <Text style={styles.schedule}>{selectedBooking.schedule.date} · {selectedBooking.schedule.time}</Text>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>예약 번호</Text>
-              <Text style={styles.infoValue}>WG-1112-001</Text>
+              <Text style={styles.infoValue}>목업 예약</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>활동 내용</Text>
@@ -95,7 +103,7 @@ export function BookingDetailScreen({
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>산책 시간</Text>
-              <Text style={styles.infoValue}>최대 30분</Text>
+              <Text style={styles.infoValue}>최대 {option.maxWalkMinutes}분</Text>
             </View>
           </GradientView>
 
@@ -103,7 +111,7 @@ export function BookingDetailScreen({
             <View style={styles.guideCard}>
               <Text style={styles.guideTitle}>방문 전 꼭 확인해요</Text>
               <Text style={styles.guideText}>
-                • 행복 보호소 · 서울 성북구{"\n"}
+                • {option.shelterName} · {option.district}{"\n"}
                 • 방문 전 보호소에서 만남 장소 확인{"\n"}
                 • 편한 신발과 움직이기 좋은 복장{"\n"}
                 • 현장에서 안전 교육과 준비물 수령
@@ -116,7 +124,7 @@ export function BookingDetailScreen({
               </Text>
               <Text style={styles.guideText}>
                 {state === "pending"
-                  ? "보호소가 신청 내용을 확인하고 있어요."
+                  ? "목업 신청은 앱에만 저장되며 보호소에 전송되지 않았어요."
                   : "예약 일정이 이미 마감되었어요."}
               </Text>
             </View>
@@ -137,7 +145,7 @@ export function BookingDetailScreen({
                 accessibilityLabel="보호소 코드 입력하기"
                 accessibilityRole="button"
                 onPress={() => router.push("/4-1")}
-                style={styles.primaryAction}
+                style={styles.primaryPressable}
               >
                 <Text style={styles.primaryActionText}>보호소 코드 입력하기</Text>
               </Pressable>
@@ -145,7 +153,7 @@ export function BookingDetailScreen({
               <Pressable
                 accessibilityLabel="예약 취소하기"
                 accessibilityRole="button"
-                onPress={() => router.push("/8-6")}
+                onPress={() => router.push("/8-7")}
                 style={styles.secondaryAction}
               >
                 <Text style={styles.secondaryActionText}>예약 취소하기</Text>
@@ -157,7 +165,7 @@ export function BookingDetailScreen({
               accessibilityLabel="목록으로"
               accessibilityRole="button"
               onPress={() => router.replace("/8-1")}
-              style={styles.primaryAction}
+              style={styles.primaryPressable}
             >
               <Text style={styles.primaryActionText}>목록으로</Text>
             </Pressable>
@@ -182,6 +190,7 @@ export function BookingDetailRejectedRoute() {
 }
 
 const styles = StyleSheet.create({
+  primaryPressable: { alignItems: "center", height: 49, justifyContent: "center", width: 335 },
   root: {
     flex: 1,
     width: "100%",
@@ -317,7 +326,6 @@ const styles = StyleSheet.create({
   },
   primaryAction: {
     alignItems: "center",
-    backgroundColor: colors.midLightOrange,
     borderRadius: 27,
     height: 49,
     justifyContent: "center",

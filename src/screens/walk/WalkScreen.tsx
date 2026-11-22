@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "expo-router";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Animated,
+  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
 import { Icon } from "../../components/Icon";
 import { GradientView } from "../../components/GradientView";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
 import WalkRouteLine from "../../assets/icons/walk-route-line.svg";
 import WalkRouteLocation from "../../assets/icons/walk-route-location.svg";
 import WalkRouteDot from "../../assets/icons/walk-route-dot.svg";
@@ -23,6 +25,13 @@ import { gradientButtonWarm, gradientCardCream } from "../../theme/gradients";
 
 const walkingMap = require("../../assets/images/walking-map.png");
 const kongiImage = require("../../assets/images/dog-kongi.png");
+const USE_WALK_MAP_MOCKUP =
+  process.env.EXPO_PUBLIC_WALK_MAP_MOCKUP !== "false";
+const KakaoWalkMap = lazy(() =>
+  import("../../components/KakaoWalkMap").then((module) => ({
+    default: module.KakaoWalkMap,
+  })),
+);
 
 export type WalkState =
   | "active"
@@ -37,14 +46,26 @@ type WalkScreenProps = {
 };
 
 const plusItems = [
-  { label: "냄새 맡기", icon: "icon-pets" as const, top: 258 },
-  { label: "배변", icon: "icon-dog-poop" as const, top: 306 },
-  { label: "다른 개", icon: "icon-dog" as const, top: 354 },
-  { label: "포토스팟", icon: "icon-camera" as const, top: 402 },
+  { label: "냄새 맡기", icon: "sniff" as const, top: 24, labelWidth: 71 },
+  { label: "배변", icon: "poop" as const, top: 72, labelWidth: 48 },
+  {
+    label: "다른 개",
+    icon: "icon-dog-body" as const,
+    top: 120,
+    labelWidth: 59,
+  },
+  {
+    label: "포토스팟",
+    icon: "icon-camera" as const,
+    top: 168,
+    labelWidth: 68,
+  },
 ] as const;
 
 export default function WalkScreen({ initialState = "active" }: WalkScreenProps) {
   const router = useRouter();
+  const { closeReport } = useLocalSearchParams<{ closeReport?: string }>();
+  const { addMarker } = useMockSession();
   const [state, setState] = useState<WalkState>(initialState);
   const walkStats = {
     time: "24:15",
@@ -56,6 +77,13 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
   const plusOpacity = useRef(new Animated.Value(0)).current;
 
   const hasBottomSheet = state === "report";
+
+  useEffect(() => {
+    if (closeReport === "1") {
+      setState("active");
+      router.setParams({ closeReport: "" });
+    }
+  }, [closeReport, router]);
 
   useEffect(() => {
     if (hasBottomSheet) {
@@ -102,172 +130,221 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
       }
     >
       <View style={styles.root}>
-        <View style={styles.profileRow}>
-          <View style={styles.profilePill}>
-            <Image accessible={false} resizeMode="cover" source={kongiImage} style={styles.profileDog} />
-            <Text style={styles.profileText}>콩이 · 행복 보호소</Text>
-          </View>
-          <Pressable
-            accessibilityLabel="신고"
-            accessibilityRole="button"
-            onPress={() => setState("report")}
-            style={styles.reportButton}
-          >
-            <Icon name="icon-warning" width={16} height={16} color={colors.cream} />
-            <Text style={styles.reportText}>신고</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.mapCard}>
-          <Image
-            accessible={false}
-            resizeMode="cover"
-            source={walkingMap}
-            style={styles.mapImage}
-          />
-          {state === "paused" ? <View style={styles.pauseOverlay} /> : null}
-
-          <WalkRouteLine
-            height={283.089}
-            preserveAspectRatio="xMidYMid meet"
-            style={styles.routeLine}
-            width={47.105}
-          />
-          <WalkRouteLocation
-            height={23.288}
-            preserveAspectRatio="xMidYMid meet"
-            style={styles.routeLocation}
-            width={22.641}
-          />
-          <WalkRouteDot
-            height={18.293}
-            preserveAspectRatio="xMidYMid meet"
-            style={styles.routeDot}
-            width={18.293}
-          />
-          <WalkMarkerSniff
-            height={32}
-            preserveAspectRatio="xMidYMid meet"
-            style={styles.markerSniff}
-            width={32}
-          />
-          <WalkMarkerPoop
-            height={32}
-            preserveAspectRatio="xMidYMid meet"
-            style={styles.markerPoop}
-            width={32}
-          />
-
-          {state === "plusMenu" || state === "markerSelected" ? (
-            <Animated.View
-              style={[
-                styles.plusMenu,
-                {
-                  opacity: plusOpacity,
-                  transform: [{ translateX: plusTranslateX }],
-                },
-              ]}
+        <View style={styles.contentFrame}>
+          <View style={styles.profileRow}>
+            <View style={styles.profilePill}>
+              <Image accessible={false} resizeMode="cover" source={kongiImage} style={styles.profileDog} />
+              <Text style={styles.profileText}>콩이 · 행복 보호소</Text>
+            </View>
+            <Pressable
+              accessibilityLabel="신고"
+              accessibilityRole="button"
+              onPress={() => setState("report")}
+              style={styles.reportButton}
             >
-              {plusItems.map((item) => (
-                <View key={item.label} style={[styles.plusMenuRow, { top: item.top - 234 }]}>
-                  <View style={styles.plusMenuLabel}>
-                    <Text style={styles.plusMenuLabelText}>{item.label}</Text>
+              <Icon name="icon-warning" width={16} height={16} color={colors.cream} />
+              <Text style={styles.reportText}>신고</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.mapCard}>
+            {USE_WALK_MAP_MOCKUP ? (
+              <Image
+                accessible={false}
+                resizeMode="stretch"
+                source={walkingMap}
+                style={styles.mapImage}
+              />
+            ) : (
+              <Suspense fallback={<View style={StyleSheet.absoluteFill} />}>
+                <KakaoWalkMap />
+              </Suspense>
+            )}
+            {state === "paused" ? <View style={styles.pauseOverlay} /> : null}
+
+            {USE_WALK_MAP_MOCKUP ? (
+              <>
+                <WalkRouteLine
+                  height={283.089}
+                  preserveAspectRatio="xMidYMid meet"
+                  style={styles.routeLine}
+                  width={47.105}
+                />
+                <WalkRouteLocation
+                  height={23.288}
+                  preserveAspectRatio="xMidYMid meet"
+                  style={styles.routeLocation}
+                  width={22.641}
+                />
+                <WalkRouteDot
+                  height={18.293}
+                  preserveAspectRatio="xMidYMid meet"
+                  style={styles.routeDot}
+                  width={18.293}
+                />
+                <View style={[styles.recordMarker, styles.markerSniff]}>
+                  <View style={styles.recordMarkerIcon}>
+                    <WalkMarkerSniff height={18} width={18} />
                   </View>
-                  <Pressable
-                    accessibilityLabel={item.label}
-                    accessibilityRole="button"
-                    onPress={() => setState("active")}
-                    style={styles.plusMenuButton}
-                  >
-                    <Icon name={item.icon} width={28} height={28} color={colors.brown} />
-                  </Pressable>
                 </View>
-              ))}
-            </Animated.View>
-          ) : null}
-
-          {state !== "plusMenu" && state !== "markerSelected" ? (
-            <Pressable
-              accessibilityLabel="산책 기록 추가"
-              accessibilityRole="button"
-              onPress={() => setState("plusMenu")}
-              style={styles.addButton}
-            >
-              <Icon name="icon-add" width={24} height={24} color={colors.white} />
-            </Pressable>
-          ) : (
-            <Pressable
-              accessibilityLabel="산책 기록 메뉴 닫기"
-              accessibilityRole="button"
-              onPress={() => setState("active")}
-              style={styles.addButton}
-            >
-              <View style={styles.closeIcon}>
-                <Icon name="icon-add" width={24} height={24} color={colors.white} />
-              </View>
-            </Pressable>
-          )}
-
-          <View style={styles.statsCard}>
-            {state === "paused" ? (
-              <View style={styles.pausedBadge}>
-                <Icon name="icon-pause" width={23} height={23} color={colors.brown} />
-                <Text style={styles.pausedBadgeText}>일시정지됨</Text>
-              </View>
+                <View style={[styles.recordMarker, styles.markerPoop]}>
+                  <View style={styles.recordMarkerIcon}>
+                    <WalkMarkerPoop height={18} width={18} />
+                  </View>
+                </View>
+              </>
             ) : null}
-            <View style={styles.timeBlock}>
-              <Text style={styles.statLabel}>산책 시간</Text>
-              <Text style={styles.timeValue}>{walkStats.time}</Text>
-            </View>
-            <View style={styles.distanceBlock}>
-              <Text style={styles.statLabel}>거리</Text>
-              <Text style={styles.distanceValue}>{walkStats.distance}</Text>
-            </View>
-            <View style={styles.speedBlock}>
-              <Text style={styles.statLabel}>평균 속도</Text>
-              <Text style={styles.speedValue}>{walkStats.averageSpeed}</Text>
+
+            {state === "plusMenu" || state === "markerSelected" ? (
+              <Animated.View
+                style={[
+                  styles.plusMenu,
+                  {
+                    opacity: plusOpacity,
+                    transform: [{ translateX: plusTranslateX }],
+                  },
+                ]}
+              >
+                {plusItems.map((item) => (
+                  <View
+                    key={item.label}
+                    style={[styles.plusMenuRow, { top: item.top }]}
+                  >
+                    <View
+                      style={[styles.plusMenuLabel, { width: item.labelWidth }]}
+                    >
+                      <Text style={styles.plusMenuLabelText}>{item.label}</Text>
+                    </View>
+                    <Pressable
+                      accessibilityLabel={item.label}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        addMarker(item.label);
+                        setState("active");
+                        Alert.alert("목업 기록", `${item.label} 항목을 저장했어요. 위치는 기록되지 않아요.`);
+                      }}
+                      style={styles.plusMenuButton}
+                    >
+                      <View style={styles.plusMenuIcon}>
+                        {item.icon === "sniff" ? (
+                          <WalkMarkerSniff height={28} width={28} />
+                        ) : item.icon === "poop" ? (
+                          <WalkMarkerPoop height={28} width={28} />
+                        ) : (
+                          <Icon
+                            name={item.icon}
+                            width={28}
+                            height={28}
+                            color={colors.brown}
+                          />
+                        )}
+                      </View>
+                    </Pressable>
+                  </View>
+                ))}
+              </Animated.View>
+            ) : null}
+
+            {state !== "plusMenu" && state !== "markerSelected" ? (
+              <Pressable
+                accessibilityLabel="산책 기록 추가"
+                accessibilityRole="button"
+                onPress={() => setState("plusMenu")}
+                style={styles.addButton}
+              >
+                <Icon name="icon-add" width={24} height={24} color={colors.white} />
+              </Pressable>
+            ) : (
+              <Pressable
+                accessibilityLabel="산책 기록 메뉴 닫기"
+                accessibilityRole="button"
+                onPress={() => setState("active")}
+                style={styles.addButton}
+              >
+                <View style={styles.closeIcon}>
+                  <Icon name="icon-add" width={24} height={24} color={colors.white} />
+                </View>
+              </Pressable>
+            )}
+
+            <View style={styles.statsCard}>
+              {state === "paused" ? (
+                <View style={styles.pausedBadge}>
+                  <Icon name="icon-pause" width={23} height={23} color={colors.brown} />
+                  <Text style={styles.pausedBadgeText}>일시정지됨</Text>
+                </View>
+              ) : null}
+              <View style={styles.timeBlock}>
+                <Text style={styles.statLabel}>산책 시간</Text>
+                <Text style={styles.timeValue}>{walkStats.time}</Text>
+              </View>
+              <View style={styles.metricsCard}>
+                <View style={[styles.metricColumn, styles.distanceMetric]}>
+                  <Text style={[styles.statLabel, styles.metricLabel]}>거리</Text>
+                  <Text numberOfLines={1} style={styles.metricValue}>
+                    {walkStats.distance}
+                  </Text>
+                </View>
+                <View style={[styles.metricColumn, styles.speedMetric]}>
+                  <Text style={[styles.statLabel, styles.metricLabel]}>평균 속도</Text>
+                  <Text numberOfLines={1} style={styles.metricValue}>
+                    {walkStats.averageSpeed}
+                  </Text>
+                </View>
+                <View style={styles.metricDivider} />
+              </View>
             </View>
           </View>
-        </View>
 
-        <View style={styles.bottomControls}>
-          {state === "paused" ? (
-            <Pressable
-              accessibilityLabel="이어 걷개"
-              accessibilityRole="button"
-              onPress={() => setState("active")}
-              style={styles.resumeButton}
-            >
-              <Icon name="icon-play" width={29} height={29} color={colors.brown} />
-              <Text style={styles.resumeText}>이어 걷개</Text>
-            </Pressable>
-          ) : (
-            <GradientView token={gradientButtonWarm} style={styles.pauseButton}>
-            <Pressable
-              accessibilityLabel="정지하개"
-              accessibilityRole="button"
-              onPress={() => setState("paused")}
-              style={styles.controlPressable}
-            >
-              <Icon name="icon-pause" width={14.5} height={16.9167} color={colors.brown} />
-              <Text style={styles.pauseText}>정지하개</Text>
-            </Pressable>
+          <View style={styles.bottomControls}>
+            {state === "paused" ? (
+              <Pressable
+                accessibilityLabel="이어 걷개"
+                accessibilityRole="button"
+                onPress={() => setState("active")}
+                style={styles.resumeButton}
+              >
+                <Icon
+                  name="icon-play"
+                  width={12.2585}
+                  height={14.9384}
+                  color={colors.brown}
+                />
+                <Text style={styles.resumeText}>이어 걷개</Text>
+              </Pressable>
+            ) : (
+              <GradientView token={gradientButtonWarm} style={styles.pauseButton}>
+                <Pressable
+                  accessibilityLabel="정지하개"
+                  accessibilityRole="button"
+                  onPress={() => setState("paused")}
+                  style={[styles.controlPressable, styles.pauseControlPressable]}
+                >
+                  <Icon
+                    name="icon-pause"
+                    width={14.5}
+                    height={16.9167}
+                    color={colors.brown}
+                  />
+                  <Text style={styles.pauseText}>정지하개</Text>
+                </Pressable>
+              </GradientView>
+            )}
+            <GradientView token={gradientCardCream} style={styles.stopButton}>
+              <Pressable
+                accessibilityLabel="종료"
+                accessibilityRole="button"
+                onPress={() => {
+                  setState("ended");
+                  router.push("/6-1");
+                }}
+                style={styles.controlPressable}
+              >
+                <Icon name="icon-stop" width={16} height={16} color={colors.brown} />
+                <Text style={styles.stopText}>종료</Text>
+              </Pressable>
             </GradientView>
-          )}
-          <GradientView token={gradientCardCream} style={styles.stopButton}>
-          <Pressable
-            accessibilityLabel="종료"
-            accessibilityRole="button"
-            onPress={() => {
-              setState("ended");
-              router.push("/6-1");
-            }}
-            style={styles.controlPressable}
-          >
-            <Icon name="icon-stop" width={16} height={16} color={colors.brown} />
-            <Text style={styles.stopText}>종료</Text>
-          </Pressable>
-          </GradientView>
+          </View>
         </View>
 
         {hasBottomSheet ? (
@@ -286,7 +363,8 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
             >
               <ReportSheet
                 onClose={() => setState("active")}
-                onResult={(failed) => router.push(failed ? "/5-6" : "/5-7")}
+                onOther={() => router.push("/5-5-other")}
+                onResult={(report) => router.push({ pathname: "/5-6", params: { report } })}
               />
             </Animated.View>
           </>
@@ -296,42 +374,100 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
   );
 }
 
-function ReportSheet({ onClose, onResult }: { onClose: () => void; onResult: (failed: boolean) => void }) {
+function ReportSheet({
+  onClose,
+  onOther,
+  onResult,
+}: {
+  onClose: () => void;
+  onOther: () => void;
+  onResult: (report: string) => void;
+}) {
+  const [selectedReport, setSelectedReport] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState(false);
   const options = [
-    { label: "도주", icon: "icon-dog" as const, selected: true },
-    { label: "부상", icon: "icon-medical-services" as const, selected: false },
-    { label: "배변봉투 부족", icon: "icon-dog-poop" as const, selected: false },
-    { label: "이물질 섭취", icon: "icon-warning" as const, selected: false },
-    { label: "기타", icon: "icon-more" as const, selected: false },
+    { label: "도주", icon: "icon-dog" as const },
+    { label: "부상", icon: "icon-medical-services" as const },
+    { label: "배변봉투 부족", icon: "icon-dog-poop" as const },
+    { label: "이물질 섭취", icon: "icon-warning" as const },
+    { label: "기타", icon: "icon-more" as const },
   ];
+
+  const continueReport = () => {
+    if (!selectedReport) {
+      setSelectionError(true);
+      return;
+    }
+
+    if (selectedReport === "기타") {
+      onOther();
+      return;
+    }
+
+    onResult(selectedReport);
+  };
+
+  const isOtherSelected = selectedReport === "기타";
+
   return (
     <View style={styles.reportSheetContent}>
       <View style={styles.sheetHandle} />
       <Text style={styles.reportTitle}>어떤 상황인가요?</Text>
-      <Text style={styles.reportSubtitle}>현재 위치와 함께 보호소에 바로 알려드려요!</Text>
+      <Text style={styles.reportSubtitle}>신고 전송과 위치 전달은 아직 연결되지 않았어요.</Text>
       {options.map((option, index) => (
         <Pressable
           key={option.label}
           accessibilityLabel={option.label}
           accessibilityRole="button"
-          onPress={() => onResult(index === 1)}
+          onPress={() => {
+            setSelectedReport(option.label);
+            setSelectionError(false);
+          }}
           style={[
             styles.reportOption,
             { top: 121 + index * 70 },
-            option.selected ? styles.reportOptionSelected : styles.reportOptionDefault,
+            selectedReport === option.label
+              ? styles.reportOptionSelected
+              : styles.reportOptionDefault,
           ]}
         >
           <View style={styles.reportOptionIcon}>
-            <Icon name={option.icon} width={22} height={22} color={option.selected ? "#B2401F" : colors.brown} />
+            <Icon
+              name={option.icon}
+              width={22}
+              height={22}
+              color={selectedReport === option.label ? "#B2401F" : colors.brown}
+            />
           </View>
-          <Text style={[styles.reportOptionText, option.selected && styles.reportOptionTextSelected]}>
+          <Text
+            style={[
+              styles.reportOptionText,
+              selectedReport === option.label
+                ? styles.reportOptionTextSelected
+                : null,
+            ]}
+          >
             {option.label}
           </Text>
         </Pressable>
       ))}
-      <Pressable accessibilityLabel="보호소에 전화하기" accessibilityRole="button" onPress={() => onResult(false)} style={styles.callButton}>
-        <Icon name="icon-phone" width={24} height={24} color={colors.brown} />
-        <Text style={styles.callButtonText}>보호소에 전화하기</Text>
+      {selectionError ? (
+        <Text style={styles.reportSelectionError}>
+          신고 유형을 선택해 주세요.
+        </Text>
+      ) : null}
+      <Pressable
+        accessibilityLabel={isOtherSelected ? "메시지 작성" : "신고 확인"}
+        accessibilityRole="button"
+        onPress={continueReport}
+        style={styles.callButton}
+      >
+        {isOtherSelected ? null : (
+          <Icon name="icon-phone" width={24} height={24} color={colors.brown} />
+        )}
+        <Text style={styles.callButtonText}>
+          {isOtherSelected ? "메시지 작성" : "신고 확인"}
+        </Text>
       </Pressable>
       <Pressable accessibilityLabel="취소" accessibilityRole="button" onPress={onClose} style={styles.cancelButton}>
         <Text style={styles.cancelButtonText}>취소</Text>
@@ -344,6 +480,11 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     width: "100%",
+  },
+  contentFrame: {
+    alignSelf: "center",
+    flex: 1,
+    width: 375,
   },
   profileRow: {
     alignSelf: "center",
@@ -398,15 +539,14 @@ const styles = StyleSheet.create({
     lineHeight: 25,
   },
   mapCard: {
-    alignSelf: "center",
     backgroundColor: colors.cream,
     borderRadius: radii.large,
     height: 634,
     left: 16,
     overflow: "hidden",
     position: "absolute",
-    right: 16,
     top: 18,
+    width: 343,
   },
   mapImage: {
     height: 743,
@@ -440,6 +580,21 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 360,
   },
+  recordMarker: {
+    backgroundColor: colors.white,
+    borderColor: colors.lightOrange,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    height: 32,
+    justifyContent: "center",
+    position: "absolute",
+    width: 32,
+  },
+  recordMarkerIcon: {
+    left: 5.5,
+    position: "absolute",
+    top: 5.5,
+  },
   pauseOverlay: {
     backgroundColor: "#D9D9D9",
     bottom: 0,
@@ -449,37 +604,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
-  routeMarkerOne: {
-    backgroundColor: colors.cream,
-    borderColor: colors.orange,
-    borderRadius: 16,
-    borderWidth: 2,
-    height: 32,
-    left: 212,
-    position: "absolute",
-    top: 258,
-    width: 32,
-  },
-  routeMarkerTwo: {
-    backgroundColor: colors.cream,
-    borderColor: colors.orange,
-    borderRadius: 16,
-    borderWidth: 2,
-    height: 32,
-    left: 174,
-    position: "absolute",
-    top: 360,
-    width: 32,
-  },
-  routeMarkerEnd: {
-    backgroundColor: colors.orange,
-    borderRadius: 9,
-    height: 18,
-    left: 215,
-    position: "absolute",
-    top: 404,
-    width: 18,
-  },
   addButton: {
     alignItems: "center",
     backgroundColor: colors.midLightOrange,
@@ -488,7 +612,7 @@ const styles = StyleSheet.create({
     height: 56,
     justifyContent: "center",
     position: "absolute",
-    right: 12,
+    right: 16,
     shadowColor: shadows.walkAddButton.color,
     shadowOffset: {
       width: shadows.walkAddButton.offsetX,
@@ -504,9 +628,9 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "45deg" }],
   },
   plusMenu: {
-    bottom: 0,
+    height: 284,
     position: "absolute",
-    right: 20,
+    right: 16,
     top: 234,
     width: 164,
     zIndex: 25,
@@ -516,8 +640,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     height: 44,
     justifyContent: "flex-end",
+    left: 6,
+    paddingRight: 6,
     position: "absolute",
-    right: 0,
+    width: 158,
   },
   plusMenuLabel: {
     alignItems: "center",
@@ -526,12 +652,17 @@ const styles = StyleSheet.create({
     height: 28,
     justifyContent: "center",
     marginRight: 8,
-    paddingHorizontal: 12,
+    shadowColor: "#6B4721",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   plusMenuLabelText: {
     color: colors.brown,
     fontFamily: fontFamilies.nanumSquareRoundBold,
     fontSize: 13,
+    lineHeight: 18,
   },
   plusMenuButton: {
     alignItems: "center",
@@ -542,6 +673,17 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: "center",
     width: 44,
+    shadowColor: shadows.walkAddButton.color,
+    shadowOffset: {
+      width: shadows.walkAddButton.offsetX,
+      height: shadows.walkAddButton.offsetY,
+    },
+    shadowOpacity: 1,
+    shadowRadius: shadows.walkAddButton.blurRadius,
+    elevation: 4,
+  },
+  plusMenuIcon: {
+    transform: [{ translateX: -1 }, { translateY: -1 }],
   },
   statsCard: {
     backgroundColor: colors.white,
@@ -559,6 +701,53 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: shadows.walkStatus.blurRadius,
     width: 319,
+  },
+  metricsCard: {
+    backgroundColor: colors.cream,
+    borderRadius: radii.small,
+    height: 56,
+    left: 112,
+    position: "absolute",
+    top: 12,
+    width: 195,
+  },
+  metricColumn: {
+    alignItems: "center",
+    height: 56,
+    justifyContent: "center",
+    paddingBottom: 2,
+    position: "absolute",
+    top: 0,
+  },
+  distanceMetric: {
+    left: 0,
+    width: 89,
+  },
+  speedMetric: {
+    left: 91,
+    width: 104,
+  },
+  metricLabel: {
+    alignSelf: "stretch",
+    textAlign: "center",
+  },
+  metricValue: {
+    alignSelf: "stretch",
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundExtraBold,
+    fontSize: typography.fontSizes.mediumTitle,
+    lineHeight: 22,
+    marginTop: 4,
+    textAlign: "center",
+  },
+  metricDivider: {
+    backgroundColor: colors.lightOrange,
+    height: 32,
+    left: 90,
+    opacity: 0.55,
+    position: "absolute",
+    top: 12,
+    width: 1,
   },
   pausedBadge: {
     alignItems: "center",
@@ -586,22 +775,6 @@ const styles = StyleSheet.create({
     top: 13,
     width: 98,
   },
-  distanceBlock: {
-    alignItems: "center",
-    height: 56,
-    left: 112,
-    position: "absolute",
-    top: 13,
-    width: 89,
-  },
-  speedBlock: {
-    alignItems: "center",
-    height: 56,
-    left: 203,
-    position: "absolute",
-    top: 13,
-    width: 104,
-  },
   statLabel: {
     color: colors.brown3,
     fontFamily: fontFamilies.nanumSquareRoundBold,
@@ -613,19 +786,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.nanumSquareRoundExtraBold,
     fontSize: typography.fontSizes.display,
     lineHeight: 32,
-    marginTop: 2,
-  },
-  distanceValue: {
-    color: colors.brown,
-    fontFamily: fontFamilies.nanumSquareRoundExtraBold,
-    fontSize: typography.fontSizes.mediumTitle,
-    lineHeight: 22,
-  },
-  speedValue: {
-    color: colors.brown,
-    fontFamily: fontFamilies.nanumSquareRoundExtraBold,
-    fontSize: typography.fontSizes.mediumTitle,
-    lineHeight: 22,
+    marginTop: 5,
   },
   bottomControls: {
     alignSelf: "center",
@@ -638,16 +799,16 @@ const styles = StyleSheet.create({
   controlPressable: {
     alignItems: "center",
     flex: 1,
+    flexDirection: "row",
+    gap: 8,
     justifyContent: "center",
   },
-  pauseButton: {
-    alignItems: "center",
-    backgroundColor: colors.midLightOrange,
-    borderRadius: radii.control,
-    flexDirection: "row",
+  pauseControlPressable: {
     gap: 12,
+  },
+  pauseButton: {
+    borderRadius: radii.control,
     height: 55,
-    justifyContent: "center",
     left: 0,
     position: "absolute",
     width: 205,
@@ -675,13 +836,8 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.title,
   },
   stopButton: {
-    alignItems: "center",
-    backgroundColor: colors.cardGradientEnd,
     borderRadius: radii.control,
-    flexDirection: "row",
-    gap: 8,
     height: 55,
-    justifyContent: "center",
     position: "absolute",
     right: 0,
     width: 110,
@@ -712,7 +868,9 @@ const styles = StyleSheet.create({
     zIndex: 51,
   },
   reportSheetContent: {
+    alignSelf: "center",
     flex: 1,
+    width: 375,
   },
   sheetHandle: {
     alignSelf: "center",
@@ -746,9 +904,9 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     flexDirection: "row",
     height: 58,
-    left: 24,
+    left: 20,
     position: "absolute",
-    width: 327,
+    width: 335,
   },
   reportOptionSelected: {
     backgroundColor: "#FFE1DB",
@@ -774,6 +932,16 @@ const styles = StyleSheet.create({
   reportOptionTextSelected: {
     color: "#B2401F",
   },
+  reportSelectionError: {
+    color: colors.warning,
+    fontFamily: fontFamilies.nanumSquareRoundRegular,
+    fontSize: typography.fontSizes.small,
+    left: 20,
+    lineHeight: 17,
+    position: "absolute",
+    top: 465,
+    width: 335,
+  },
   callButton: {
     alignItems: "center",
     backgroundColor: colors.midLightOrange,
@@ -782,10 +950,10 @@ const styles = StyleSheet.create({
     gap: 8,
     height: 58,
     justifyContent: "center",
-    left: 24,
+    left: 20,
     position: "absolute",
     top: 491,
-    width: 327,
+    width: 335,
   },
   callButtonText: {
     color: colors.brown,
@@ -796,10 +964,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 44,
     justifyContent: "center",
-    left: 24,
+    left: 20,
     position: "absolute",
     top: 567,
-    width: 327,
+    width: 335,
   },
   cancelButtonText: {
     color: colors.brown3,

@@ -1,38 +1,106 @@
 import { useState } from "react";
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { OnboardingStepNavigation } from "../../components/OnboardingStepNavigation";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
 import { UserInfoBackground } from "../../components/UserInfoBackground";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
+function formatBirthDate(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+
+  if (digits.length <= 4) {
+    return digits;
+  }
+
+  if (digits.length <= 6) {
+    return `${digits.slice(0, 4)}.${digits.slice(4)}`;
+  }
+
+  return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
+}
+
+function isValidBirthDate(value: string) {
+  const match = /^(\d{4})\.(\d{2})\.(\d{2})$/.exec(value);
+  if (!match) {
+    return false;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) {
+    return false;
+  }
+
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    isLeapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  if (day < 1 || day > daysInMonth[month - 1]) {
+    return false;
+  }
+
+  const today = new Date();
+  return (
+    year < today.getFullYear() ||
+    (year === today.getFullYear() &&
+      (month < today.getMonth() + 1 ||
+        (month === today.getMonth() + 1 && day <= today.getDate())))
+  );
+}
+
 export default function UserInput1Screen() {
   const router = useRouter();
+  const { profile, updateProfile } = useMockSession();
   const [name, setName] = useState("");
-  const [age, setAge] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [phone, setPhone] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [phoneVerified, setPhoneVerified] = useState(false);
+  const [verificationRequested, setVerificationRequested] = useState(false);
   const [validationMessage, setValidationMessage] = useState<
-    "name" | "age" | "phone" | null
+    "name" | "birthDate" | "phone" | null
   >(null);
 
   const requestVerification = () => {
     const digits = phone.replace(/\D/g, "");
     if (digits.length === 10 || digits.length === 11) {
       setPhoneVerified(false);
+      setVerificationRequested(true);
+      Alert.alert("목업 인증", "실제 인증번호는 전송되지 않아요. 테스트 번호 123456을 입력해 주세요.");
+    } else {
+      setVerificationRequested(false);
+      setValidationMessage("phone");
+      Alert.alert("전화번호 확인", "전화번호를 올바르게 입력해 주세요.");
     }
   };
 
   const confirmVerification = () => {
-    if (/^\d{6}$/.test(verificationCode)) {
+    if (verificationRequested && verificationCode === "123456") {
       setPhoneVerified(true);
       setValidationMessage((current) =>
         current === "phone" ? null : current,
       );
+      Alert.alert("목업 인증 완료", "실제 휴대폰 인증은 이루어지지 않았어요.");
+    } else {
+      setValidationMessage("phone");
+      Alert.alert("인증 확인", "인증 요청 후 테스트 번호 123456을 입력해 주세요.");
     }
   };
 
@@ -42,9 +110,8 @@ export default function UserInput1Screen() {
       return;
     }
 
-    const parsedAge = Number(age);
-    if (!/^\d{1,3}$/.test(age) || parsedAge < 1 || parsedAge > 999) {
-      setValidationMessage("age");
+    if (!isValidBirthDate(birthDate)) {
+      setValidationMessage("birthDate");
       return;
     }
 
@@ -54,6 +121,7 @@ export default function UserInput1Screen() {
     }
 
     setValidationMessage(null);
+    updateProfile({ ...profile, name: name.trim(), phone });
     router.push("/2-3");
   };
 
@@ -96,34 +164,37 @@ export default function UserInput1Screen() {
             <Text style={styles.nameError}>이름을 입력해 주세요</Text>
           ) : null}
 
-          <Text style={[styles.fieldLabel, styles.ageLabel]}>02. 나이</Text>
+          <Text style={[styles.fieldLabel, styles.ageLabel]}>
+            02. 생년월일
+          </Text>
           <PillTextInput
-            accessibilityLabel="만 나이"
+            accessibilityLabel="생년월일"
             borderColor={colors.lightOrange}
             borderRadius={radii.inputPill}
             fontFamily={fontFamilies.nanumSquareRoundRegular}
             fontSize={typography.fontSizes.subtitle}
             height={44}
+            maxLength={10}
             keyboardType="number-pad"
             onChangeText={(value) => {
-              setAge(value);
+              setBirthDate(formatBirthDate(value));
               setValidationMessage((current) =>
-                current === "age" ? null : current,
+                current === "birthDate" ? null : current,
               );
             }}
             paddingHorizontal={17}
-            placeholder="만 나이를 입력해 주세요"
+            placeholder="YYYY.MM.DD"
             placeholderColor={colors.brown2}
             style={[styles.input, styles.ageInput]}
-            value={age}
+            value={birthDate}
           />
-          {validationMessage === "age" ? (
+          {validationMessage === "birthDate" ? (
             <Text style={styles.ageError}>
-              나이를 올바르게 입력해 주세요
+              생년월일을 올바르게 입력해 주세요
             </Text>
           ) : (
             <Text style={styles.ageHint}>
-              보호소별 활동 가능 연령을 확인하는 데 사용해요.
+              보호소별 활동 가능 연령을 확인하는 데 사용해요!
             </Text>
           )}
 
@@ -141,6 +212,7 @@ export default function UserInput1Screen() {
             onChangeText={(value) => {
               setPhone(value.replace(/[^\d-]/g, ""));
               setPhoneVerified(false);
+              setVerificationRequested(false);
               setValidationMessage((current) =>
                 current === "phone" ? null : current,
               );
@@ -195,8 +267,8 @@ export default function UserInput1Screen() {
           ) : null}
 
           <Text style={styles.privacyNote}>
-            이름과 연락처는 공개되지 않으며,{"\n"}
-            활동 신청 시 해당 보호소에만 전달돼요.
+            목업으로 앱에만 입력되며,{"\n"}
+            보호소나 서버로 전송되지 않아요.
           </Text>
 
           <OnboardingStepNavigation

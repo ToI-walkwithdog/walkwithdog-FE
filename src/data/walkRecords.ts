@@ -14,7 +14,7 @@ export const walkRecords: WalkRecord[] = [
   },
   {
     id: "walk-choco-2026-11-22",
-    dogId: "moka",
+    dogId: "choco",
     displayName: "초코랑 산책",
     displayDistance: "2km",
     displayDate: "11.22.",
@@ -25,7 +25,7 @@ export const walkRecords: WalkRecord[] = [
   },
   {
     id: "walk-baekho-2026-12-01",
-    dogId: "kongi",
+    dogId: "baekho",
     displayName: "백호랑 산책",
     displayDistance: "0.5km",
     displayDate: "12.01.",

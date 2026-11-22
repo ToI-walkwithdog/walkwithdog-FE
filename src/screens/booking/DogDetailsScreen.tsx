@@ -1,25 +1,25 @@
-import { useState } from "react";
 import { useRouter } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
+import { availableBookings } from "../../data/availableBookings";
+import { dogs } from "../../data/dogs";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
-const kongiImage = require("../../assets/images/dog-kongi.png");
-
 export default function DogDetailsScreen() {
   const router = useRouter();
-  const [selectedSchedule, setSelectedSchedule] = useState(1);
-  const schedules = [
-    "11월 12일    13:00–14:00",
-    "11월 13일    10:00–11:00",
-  ];
+  const { draftDogId, draftScheduleIndex, selectSchedule } = useMockSession();
+  const booking = availableBookings.find((item) => item.dogId === draftDogId);
+  const dog = dogs.find((item) => item.id === draftDogId);
+  if (!booking || !dog) throw new Error("Selected dog is unavailable.");
 
   return (
     <Screen
       backgroundColor={colors.white}
+      scroll
       safeAreaEdges={[]}
       testID="screen-7-3"
     >
@@ -47,28 +47,30 @@ export default function DogDetailsScreen() {
             <Image
               accessible={false}
               resizeMode="cover"
-              source={kongiImage}
+              source={dog.image}
               style={styles.dogImage}
             />
-            <Text style={styles.dogName}>콩이</Text>
+            <Text style={styles.dogName}>{dog.name}</Text>
             <Text style={styles.dogMeta}>
-              소형견 · 행복 보호소 · 서울 성북구
+              {booking.size} · {booking.shelterName} · {booking.district}
             </Text>
             <View style={styles.dogBadges}>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>난이도 3.5</Text>
+                <Text style={styles.badgeText}>난이도 {booking.rating}</Text>
               </View>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>최대 30분</Text>
+                <Text style={styles.badgeText}>최대 {booking.maxWalkMinutes}분</Text>
               </View>
             </View>
           </View>
 
           <View style={styles.features}>
-            <Text style={styles.sectionTitle}>콩이의 특징</Text>
+            <Text style={styles.sectionTitle}>{dog.name}의 특징</Text>
             <View style={styles.featureCard}>
               <Text style={styles.featureText}>
-                콩이는 체력이 강해 이리저리 뛰어다녀 체력이 약하신 분은 다른 견을 선택해주세요!
+                {draftDogId === "kongi"
+                  ? "콩이는 체력이 강해 이리저리 뛰어다녀 체력이 약하신 분은 다른 견을 선택해주세요!"
+                  : "자세한 특징은 보호소에 확인해 주세요."}
               </Text>
             </View>
           </View>
@@ -76,33 +78,33 @@ export default function DogDetailsScreen() {
           <View style={styles.scheduleSection}>
             <Text style={styles.sectionTitle}>함께 걸을 일정</Text>
             <Text style={styles.scheduleHint}>
-              방문 가능한 시간대예요. 실제 산책은 최대 30분이에요.
+              방문 가능한 시간대예요. 실제 산책은 최대 {booking.maxWalkMinutes}분이에요.
             </Text>
-            {schedules.map((schedule, index) => (
+            {booking.schedules.map((schedule, index) => (
               <Pressable
-                accessibilityLabel={schedule}
+                accessibilityLabel={`${schedule.date} ${schedule.time}`}
                 accessibilityRole="button"
-                accessibilityState={{ selected: selectedSchedule === index }}
-                key={schedule}
-                onPress={() => setSelectedSchedule(index)}
+                accessibilityState={{ selected: draftScheduleIndex === index }}
+                key={`${schedule.date}-${schedule.time}`}
+                onPress={() => selectSchedule(index)}
                 style={[
                   styles.scheduleButton,
                   { top: 52 + index * 56 },
-                  selectedSchedule === index
+                  draftScheduleIndex === index
                     ? styles.scheduleButtonSelected
                     : styles.scheduleButtonDefault,
                 ]}
               >
-                <Text style={styles.scheduleText}>{schedule}</Text>
+                <Text style={styles.scheduleText}>{schedule.date}    {schedule.time}</Text>
               </Pressable>
             ))}
           </View>
 
           <View style={styles.shelterSection}>
-            <Text style={styles.sectionTitle}>행복 보호소</Text>
+            <Text style={styles.sectionTitle}>{booking.shelterName}</Text>
             <View style={styles.shelterCard}>
               <Text style={styles.shelterAddress}>
-                서울 성북구 자세한 주소
+                {booking.district} · 자세한 주소는 보호소에 확인해 주세요.
               </Text>
               <Text style={styles.shelterHint}>
                 예약 확정 후 보호소 안내를 확인해 주세요!
@@ -134,6 +136,7 @@ export default function DogDetailsScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    minHeight: 776,
     width: "100%",
   },
   header: {
@@ -299,8 +302,10 @@ const styles = StyleSheet.create({
   bottomAction: {
     alignItems: "center",
     alignSelf: "center",
+    bottom: 28,
     height: 61,
     paddingTop: 12,
+    position: "absolute",
     width: 375,
   },
   applyButton: {

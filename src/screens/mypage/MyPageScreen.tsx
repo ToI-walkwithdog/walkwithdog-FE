@@ -1,13 +1,16 @@
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
 export default function MyPageScreen() {
   const router = useRouter();
+  const { profile, records, resetSession } = useMockSession();
+  const distance = records.reduce((sum, record) => sum + record.distanceMeters, 0) / 1000;
 
   const menuItems = [
     { label: "내 정보 수정", detail: "닉네임 · 프로필 사진 · 전화번호", icon: "icon-user" as const, route: "/10-2" },
@@ -27,29 +30,29 @@ export default function MyPageScreen() {
         <Pressable
           accessibilityLabel="설정"
           accessibilityRole="button"
-          onPress={() => console.log("설정 tapped")}
+          onPress={() => router.push("/settings")}
           style={styles.settingsButton}
         >
           <Icon name="icon-settings" size={24} width={24} height={24} color={colors.brown} />
         </Pressable>
       </View>
       <View style={styles.profileCard}>
-        <Text style={styles.profileName}>Glow 님</Text>
+        <Text style={styles.profileName}>{profile.nickname} 님</Text>
         <View style={styles.levelBadge}>
           <Icon name="icon-shield" size={16} width={16} height={16} color={colors.brown2} />
           <Text style={styles.levelText}>산책 레벨 3</Text>
         </View>
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <Text style={styles.statValue}>12회</Text>
+            <Text style={styles.statValue}>{records.length}회</Text>
             <Text style={styles.statLabel}>총 산책</Text>
           </View>
           <View style={styles.stat}>
-            <Text style={styles.statValue}>28.4 km</Text>
+            <Text style={styles.statValue}>{distance.toFixed(1)} km</Text>
             <Text style={styles.statLabel}>총 거리</Text>
           </View>
           <View style={styles.stat}>
-            <Text style={styles.statValue}>5마리</Text>
+            <Text style={styles.statValue}>{new Set(records.map((record) => record.dogId)).size}마리</Text>
             <Text style={styles.statLabel}>함께한 강아지</Text>
           </View>
         </View>
@@ -104,7 +107,14 @@ export default function MyPageScreen() {
       <Pressable
         accessibilityLabel="로그아웃"
         accessibilityRole="button"
-        onPress={() => console.log("로그아웃 tapped")}
+        onPress={() => Alert.alert("로그아웃", "앱에 임시 저장된 목업 데이터가 초기화돼요.", [
+          { text: "취소", style: "cancel" },
+          { text: "로그아웃", onPress: () => {
+            resetSession();
+            router.dismissAll();
+            router.replace("/1-2");
+          } },
+        ])}
         style={styles.logoutButton}
       >
         <Text style={styles.logoutText}>로그아웃</Text>

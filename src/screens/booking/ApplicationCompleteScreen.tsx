@@ -2,15 +2,20 @@ import { useRouter } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
+import { availableBookings } from "../../data/availableBookings";
+import { dogs } from "../../data/dogs";
 import { GradientView } from "../../components/GradientView";
 import { gradientButtonWarm, gradientCardCream } from "../../theme/gradients";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
-const kongiImage = require("../../assets/images/dog-kongi.png");
-
 export default function ApplicationCompleteScreen() {
   const router = useRouter();
+  const { selectedBooking } = useMockSession();
+  const dog = dogs.find((item) => item.id === selectedBooking?.dogId);
+  const option = availableBookings.find((item) => item.dogId === selectedBooking?.dogId);
+  if (!selectedBooking || !dog || !option) throw new Error("Selected booking is unavailable.");
 
   return (
     <Screen
@@ -20,10 +25,10 @@ export default function ApplicationCompleteScreen() {
     >
       <View style={styles.root}>
         <View style={styles.body}>
-          <Text style={styles.title}>신청 전달 완료!</Text>
+          <Text style={styles.title}>신청 내용 저장 완료</Text>
           <Text style={styles.subtitle}>
-            아직 예약 확정은 아니에요.{"\n"}
-            보호소가 확인하면 결과를 알려드릴게요.
+            목업으로 앱에만 저장되었어요.{"\n"}
+            보호소에는 신청이 전송되지 않았어요.
           </Text>
 
           <GradientView token={gradientCardCream} style={styles.bookingCard}>
@@ -31,22 +36,22 @@ export default function ApplicationCompleteScreen() {
               <Image
                 accessible={false}
                 resizeMode="cover"
-                source={kongiImage}
+                source={dog.image}
                 style={styles.dogImage}
               />
               <View style={styles.dogInfo}>
-                <Text style={styles.dogName}>콩이</Text>
-                <Text style={styles.shelterName}>행복 보호소</Text>
+                <Text style={styles.dogName}>{dog.name}</Text>
+                <Text style={styles.shelterName}>{option.shelterName}</Text>
               </View>
               <View style={styles.pendingBadge}>
                 <Text style={styles.pendingText}>승인 대기</Text>
               </View>
             </View>
-            <Text style={styles.schedule}>11월 13일 · 10:00–11:00</Text>
+            <Text style={styles.schedule}>{selectedBooking.schedule.date} · {selectedBooking.schedule.time}</Text>
           </GradientView>
 
           <View style={styles.stepsCard}>
-            <Text style={styles.stepActive}>01  신청 접수 완료</Text>
+            <Text style={styles.stepActive}>01  앱에 신청 내용 저장</Text>
             <Text style={styles.step}>02  보호소 확인·승인</Text>
             <Text style={styles.step}>03  예약 확정 후 방문</Text>
           </View>
@@ -62,8 +67,8 @@ export default function ApplicationCompleteScreen() {
           <Pressable
             accessibilityLabel="내 예약 현황 보기"
             accessibilityRole="button"
-            onPress={() => console.log("내 예약 현황 보기 tapped")}
-            style={styles.primaryAction}
+            onPress={() => router.replace("/8-1")}
+            style={styles.primaryPressable}
           >
             <Text style={styles.primaryActionText}>내 예약 현황 보기</Text>
           </Pressable>
@@ -83,6 +88,7 @@ export default function ApplicationCompleteScreen() {
 }
 
 const styles = StyleSheet.create({
+  primaryPressable: { alignItems: "center", height: 49, justifyContent: "center", width: 335 },
   root: {
     flex: 1,
     width: "100%",
@@ -188,7 +194,6 @@ const styles = StyleSheet.create({
   },
   primaryAction: {
     alignItems: "center",
-    backgroundColor: colors.midLightOrange,
     borderRadius: 27,
     height: 49,
     justifyContent: "center",

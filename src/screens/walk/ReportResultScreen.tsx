@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
@@ -15,50 +15,48 @@ type ReportResultScreenProps = {
 export default function ReportResultScreen({ state }: ReportResultScreenProps) {
   const router = useRouter();
   const failed = state === "failed";
+  const { report } = useLocalSearchParams<{ report?: string }>();
 
   return (
     <Screen backgroundColor={colors.white} safeAreaEdges={[]} testID={failed ? "screen-5-6" : "screen-5-7"}>
       <View style={styles.root}>
         <View style={styles.body}>
           <Icon
-            name={failed ? "icon-error" : "icon-check"}
+            name="icon-error"
             size={60}
             width={60}
             height={60}
-            color={failed ? colors.orange3 : colors.brown}
+            color={colors.orange3}
           />
           <Text style={styles.title}>
-            {failed ? "신고를 보내지 못했어요" : "보호소에 신고를 전달했어요"}
+            신고가 전송되지 않았어요
           </Text>
           <Text style={styles.subtitle}>
-            {failed
-              ? "네트워크 연결을 확인해 주세요."
-              : "지금은 강아지와 나의 안전이 가장 중요해요."}
+            신고 전송 기능이 아직 연결되지 않았어요.{"\n"}
+            보호소에 직접 연락해 주세요.
           </Text>
           <GradientView token={gradientCardCream} style={styles.card}>
-            <Text style={styles.cardTitle}>{failed ? "부상 신고 전송 실패" : "부상 신고"}</Text>
+            <Text style={styles.cardTitle}>{report ?? "신고"} · 전송되지 않음</Text>
             <Text style={styles.cardText}>콩이 · 행복 보호소</Text>
           </GradientView>
         </View>
         <View style={styles.actions}>
           <GradientView token={gradientButtonWarm} style={styles.primary}>
           <Pressable
-            accessibilityLabel={failed ? "다시 전송하기" : "보호소 연락처 확인"}
+            accessibilityLabel="보호소 연락처 확인"
             accessibilityRole="button"
-            onPress={() => {
-              if (failed) router.replace("/5-7");
-            }}
-            style={styles.primary}
+            onPress={() => Alert.alert("연락처 미연결", "보호소 연락처가 아직 연결되지 않았어요. 별도로 확인해 직접 연락해 주세요.")}
+            style={styles.primaryPressable}
           >
             <Text style={styles.primaryText}>
-              {failed ? "다시 전송하기" : "보호소 연락처 확인"}
+              보호소 연락처 확인
             </Text>
           </Pressable>
           </GradientView>
           <Pressable
             accessibilityLabel="산책 화면으로"
             accessibilityRole="button"
-            onPress={() => router.replace("/5-1")}
+            onPress={() => router.dismissTo({ pathname: "/5-1", params: { closeReport: "1" } })}
             style={styles.secondary}
           >
             <Text style={styles.secondaryText}>산책 화면으로</Text>
@@ -70,6 +68,7 @@ export default function ReportResultScreen({ state }: ReportResultScreenProps) {
 }
 
 const styles = StyleSheet.create({
+  primaryPressable: { alignItems: "center", height: 49, justifyContent: "center", width: 335 },
   root: { flex: 1, width: "100%" },
   body: {
     alignSelf: "center",
@@ -113,7 +112,6 @@ const styles = StyleSheet.create({
   },
   primary: {
     alignItems: "center",
-    backgroundColor: colors.midLightOrange,
     borderRadius: 27,
     height: 49,
     justifyContent: "center",

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useRouter } from "expo-router";
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -47,9 +48,13 @@ export default function UserInput4Screen() {
   };
 
   const completeRegistration = () => {
-    if (city.trim() && district.trim() && termsAccepted && privacyAccepted) {
-      router.push("/2-6");
+    if (!city.trim() || !district.trim() || !termsAccepted || !privacyAccepted) {
+      Alert.alert("입력 확인", "활동 지역을 입력하고 필수 동의를 확인해 주세요.");
+      return;
     }
+    Alert.alert("목업 안내", "현재 동의 내용은 실제로 저장되거나 전송되지 않아요.", [
+      { text: "확인", onPress: () => router.push("/2-6") },
+    ]);
   };
 
   return (
@@ -192,7 +197,7 @@ export default function UserInput4Screen() {
             <Pressable
               accessibilityLabel="이용약관 보기"
               accessibilityRole="link"
-              onPress={() => router.push("/1-5")}
+              onPress={() => router.push({ pathname: "/policy-info", params: { kind: "terms" } })}
               style={[styles.viewLink, styles.termsLink]}
             >
               <Text style={styles.viewLinkText}>보기</Text>
@@ -213,7 +218,7 @@ export default function UserInput4Screen() {
             <Pressable
               accessibilityLabel="개인정보 수집·이용 내용 보기"
               accessibilityRole="link"
-              onPress={() => router.push("/1-5")}
+              onPress={() => router.push({ pathname: "/policy-info", params: { kind: "privacy" } })}
               style={[styles.viewLink, styles.privacyLink]}
             >
               <Text style={styles.viewLinkText}>보기</Text>

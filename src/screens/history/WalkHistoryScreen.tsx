@@ -3,17 +3,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
 export default function WalkHistoryScreen() {
   const router = useRouter();
-  const records = [
-    { name: "콩이와 산책", shelter: "행복 보호소", distance: "2.4 km" },
-    { name: "백호와 산책", shelter: "행복 보호소", distance: "0.5 km" },
-    { name: "초코와 산책", shelter: "행복 보호소", distance: "2 km" },
-    { name: "콩이와 산책", shelter: "행복 보호소", distance: "13 km" },
-  ];
+  const { records, selectRecord } = useMockSession();
+  const distance = records.reduce((sum, record) => sum + record.distanceMeters, 0) / 1000;
 
   return (
     <Screen
@@ -38,28 +35,31 @@ export default function WalkHistoryScreen() {
       <View style={styles.body}>
         <Text style={styles.title}>함께 걸은 순간들</Text>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryNumbers}>12회        28.4 km</Text>
+          <Text style={styles.summaryNumbers}>{records.length}회        {distance.toFixed(1)} km</Text>
           <Text style={styles.summaryLabels}>총 산책                    총 거리</Text>
         </View>
 
         <Text style={styles.recentTitle}>최근 산책</Text>
         <View style={styles.records}>
-          {records.map((record, index) => (
+          {records.map((record) => (
             <Pressable
-              accessibilityLabel={`${record.name} 상세`}
+              accessibilityLabel={`${record.displayName} 상세`}
               accessibilityRole="button"
-              key={`${record.name}-${index}`}
-              onPress={() => router.push("/9-2")}
+              key={record.id}
+              onPress={() => {
+                selectRecord(record.id);
+                router.push("/9-2");
+              }}
               style={styles.recordCard}
             >
               <View>
-                <Text style={styles.recordName}>{record.name}</Text>
+                <Text style={styles.recordName}>{record.displayName}</Text>
                 <Text style={styles.recordMeta}>
-                  11.21.  ·  {record.shelter}
+                  {record.displayDate}  ·  {record.shelterName}
                 </Text>
               </View>
               <Text style={styles.recordDistance}>
-                {record.distance}  ›
+                {record.displayDistance}  ›
               </Text>
             </Pressable>
           ))}

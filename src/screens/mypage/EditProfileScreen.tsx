@@ -1,18 +1,24 @@
 import { useState } from "react";
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const [nickname, setNickname] = useState("Glow");
-  const [name, setName] = useState("가입 시 인증한 이름");
-  const [phone, setPhone] = useState("010 - ****- ****");
+  const { profile, updateProfile } = useMockSession();
+  const [nickname, setNickname] = useState(profile.nickname);
+  const [name, setName] = useState(profile.name);
+  const [phone, setPhone] = useState(profile.phone);
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/10-1");
+  };
 
   return (
     <Screen
@@ -25,7 +31,7 @@ export default function EditProfileScreen() {
           <Pressable
             accessibilityLabel="뒤로"
             accessibilityRole="button"
-            onPress={() => router.replace("/10-1")}
+            onPress={goBack}
             style={styles.backButton}
           >
             <Icon name="icon-back" size={24} width={7.41} height={12} color={colors.brown} />
@@ -71,15 +77,15 @@ export default function EditProfileScreen() {
           <Pressable
             accessibilityLabel="휴대폰 번호 변경·재인증"
             accessibilityRole="button"
-            onPress={() => console.log("휴대폰 번호 변경 tapped")}
+            onPress={() => Alert.alert("재인증 미연결", "실제 휴대폰 재인증은 아직 연결되지 않았어요.")}
             style={styles.reauthButton}
           >
             <Text style={styles.reauthText}>휴대폰 번호 변경·재인증</Text>
           </Pressable>
 
           <Text style={styles.privacyHint}>
-            이름과 연락처는 공개되지 않으며,{"\n"}
-            활동 신청 시 해당 보호소에만 전달돼요.
+            목업으로 앱에만 저장되며,{"\n"}
+            보호소나 서버로 전송되지 않아요.
           </Text>
         </View>
 
@@ -87,7 +93,15 @@ export default function EditProfileScreen() {
           <Pressable
             accessibilityLabel="변경 내용 저장"
             accessibilityRole="button"
-            onPress={() => router.replace("/10-1")}
+            onPress={() => {
+              if (!nickname.trim()) {
+                Alert.alert("입력 확인", "닉네임을 입력해 주세요.");
+                return;
+              }
+              updateProfile({ nickname: nickname.trim(), name: name.trim(), phone });
+              Alert.alert("목업 저장", "앱 실행 중에만 저장되며 실제 인증이나 서버 저장은 되지 않아요.");
+              goBack();
+            }}
             style={styles.saveButton}
           >
             <Text style={styles.saveText}>변경 내용 저장</Text>
@@ -95,7 +109,7 @@ export default function EditProfileScreen() {
           <Pressable
             accessibilityLabel="취소"
             accessibilityRole="button"
-            onPress={() => router.replace("/10-1")}
+            onPress={goBack}
             style={styles.cancelButton}
           >
             <Text style={styles.cancelText}>취소</Text>

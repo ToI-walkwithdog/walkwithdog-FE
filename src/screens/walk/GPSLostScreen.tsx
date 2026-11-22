@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
@@ -39,7 +39,7 @@ export default function GPSLostScreen() {
               <Text style={styles.recordTime}>24:15</Text>
               <Text style={styles.recordDistance}>1.8 km</Text>
             </View>
-            <Text style={styles.recordHint}>마지막으로 확인된 기록</Text>
+            <Text style={styles.recordHint}>목업 예시 기록</Text>
           </GradientView>
 
           <View style={styles.noticeCard}>
@@ -60,8 +60,8 @@ export default function GPSLostScreen() {
           <Pressable
             accessibilityLabel="위치 다시 연결하기"
             accessibilityRole="button"
-            onPress={() => router.replace("/5-1")}
-            style={styles.primary}
+            onPress={() => Alert.alert("위치 재연결 미지원", "실시간 위치 추적과 재연결은 아직 연결되지 않았어요.")}
+            style={styles.primaryPressable}
           >
             <Text style={styles.primaryText}>위치 다시 연결하기</Text>
           </Pressable>
@@ -69,7 +69,7 @@ export default function GPSLostScreen() {
           <Pressable
             accessibilityLabel="기존 기록으로 산책 종료"
             accessibilityRole="button"
-            onPress={() => router.replace("/3")}
+            onPress={() => router.replace("/6-1")}
             style={styles.secondary}
           >
             <Text style={styles.secondaryText}>기존 기록으로 산책 종료</Text>
@@ -81,6 +81,7 @@ export default function GPSLostScreen() {
 }
 
 const styles = StyleSheet.create({
+  primaryPressable: { alignItems: "center", height: 53, justifyContent: "center", width: 335 },
   root: {
     flex: 1,
     width: "100%",
@@ -232,7 +233,6 @@ const styles = StyleSheet.create({
   },
   primary: {
     alignItems: "center",
-    backgroundColor: colors.midLightOrange,
     borderRadius: 27,
     height: 53,
     justifyContent: "center",

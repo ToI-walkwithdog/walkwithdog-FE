@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
 import { GradientView } from "../../components/GradientView";
 import { gradientButtonWarm } from "../../theme/gradients";
 import { UserInfoBackground } from "../../components/UserInfoBackground";
@@ -18,6 +19,7 @@ const ITEMS = [
 
 export default function WalkChecklistScreen() {
   const router = useRouter();
+  const { clearMarkers } = useMockSession();
   const [checked, setChecked] = useState<boolean[]>([
     false,
     false,
@@ -38,6 +40,7 @@ export default function WalkChecklistScreen() {
   return (
     <Screen
       backgroundColor={colors.white}
+      scroll
       safeAreaEdges={[]}
       testID="screen-4-4"
     >
@@ -104,7 +107,7 @@ export default function WalkChecklistScreen() {
             <Pressable
               accessibilityLabel="이전"
               accessibilityRole="button"
-              onPress={() => router.replace("/4-2")}
+              onPress={() => router.replace("/4-1")}
               style={styles.previousButton}
             >
               <Text style={styles.previousButtonText}>이전</Text>
@@ -114,7 +117,15 @@ export default function WalkChecklistScreen() {
                 <Pressable
                   accessibilityLabel="산책 시작하기"
                   accessibilityRole="button"
-                  onPress={() => router.push("/5-1")}
+                  onPress={() => {
+                    Alert.alert("목업 산책", "시간·거리·지도 경로는 예시이며 실제 산책은 기록되지 않아요.", [
+                      { text: "취소", style: "cancel" },
+                      { text: "확인", onPress: () => {
+                        clearMarkers();
+                        router.push("/5-1");
+                      } },
+                    ]);
+                  }}
                   style={styles.startButtonPressable}
                 >
                   <Text style={[styles.startButtonText, styles.startButtonTextComplete]}>
@@ -148,6 +159,7 @@ const styles = StyleSheet.create({
   contentFrame: {
     alignSelf: "center",
     flex: 1,
+    minHeight: 775,
     width: 375,
   },
   title: {
@@ -274,7 +286,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     height: 54,
     position: "absolute",
-    top: 730,
+    bottom: 24,
     width: 324,
   },
   previousButton: {

@@ -35,37 +35,27 @@ export default function PrivacyDetailsScreen() {
           <Text style={styles.headerTitle}>개인정보 처리방침</Text>
 
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>한 눈에 보는 요약</Text>
+            <Text style={styles.summaryTitle}>목업 안내</Text>
             <Text style={styles.summaryDetails}>
-              <Text style={styles.summaryEmphasis}>수집 항목</Text>
-              : 닉네임, 아이디, MBTI, 가구 정보 등{"\n"}
-              <Text style={styles.summaryEmphasis}>이용 목적</Text>
-              : 강아지 매칭 서비스 제공{"\n"}
-              <Text style={styles.summaryEmphasis}>보유 기간</Text>
-              : 회원 탈퇴 시까지{"\n"}
-              <Text style={styles.summaryEmphasis}>국외 이전</Text>
-              : Google LLC(Gemini, 미국)
+              실제 개인정보 처리방침은 아직 연결되지 않았어요.{"\n"}
+              현재 화면의 동의는 실제 동의로 저장되지 않아요.
             </Text>
           </View>
 
-          <Text style={styles.sectionTitleOne}>
-            제 1조 (개인정보 처리 목적)
-          </Text>
+          <Text style={styles.sectionTitleOne}>개인정보 안내</Text>
           <Text style={styles.sectionBodyOne}>
-            글로우는 회원 가입 및 관리, 매칭 서비스 제공, 서비스 개선,
-            {"\n"}고충 처리를 위해 개인정보를 처리합니다.
+            실제 서비스의 개인정보 처리 내용은{"\n"}정식 문서 연결 후 확인할 수 있어요.
           </Text>
 
-          <Text style={styles.sectionTitleTwo}>제 2조 (용어의 정의)</Text>
+          <Text style={styles.sectionTitleTwo}>동의 안내</Text>
           <Text style={styles.sectionBodyTwo}>
-            아이디, 비밀번호, 닉네임, MBTI, 주거 형태, 가구 구성,
-            {"\n"}주거 형태, 생활 패턴, 반려 경험, 경제적 여건, 산책 가능 시간
+            현재 입력과 동의는 화면 흐름을 확인하기 위한{"\n"}목업이며 서버에 전송되지 않아요.
           </Text>
 
           <View style={styles.footerLine} />
           <DetailConsentRow
             checked={checked[0]}
-            label="개인 정보 수집 이용에 동의"
+            label="목업 개인정보 안내 확인"
             onPress={() =>
               setChecked((current) =>
                 current.map((value, index) => (index === 0 ? !value : value)),
@@ -75,7 +65,7 @@ export default function PrivacyDetailsScreen() {
           />
           <DetailConsentRow
             checked={checked[1]}
-            label="국외 이전(Gemini API)에 동의"
+            label="목업 동의 안내 확인"
             onPress={() =>
               setChecked((current) =>
                 current.map((value, index) => (index === 1 ? !value : value)),

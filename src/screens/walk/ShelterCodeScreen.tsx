@@ -48,7 +48,7 @@ export default function ShelterCodeScreen({
       setState("error");
       return;
     }
-    router.replace("/5-1");
+    router.replace("/4-4");
   };
 
   return (
@@ -147,10 +147,15 @@ export default function ShelterCodeScreen({
             )}
           </View>
 
-          <View style={styles.noticeCard}>
+          <View
+            style={[
+              styles.noticeCard,
+              state === "error" ? styles.noticeCardError : null,
+            ]}
+          >
             <Text style={styles.noticeText}>
-              코드가 확인되면 산책 시간이 바로 기록돼요.{"\n"}
-              준비물과 리드줄 연결 상태를 먼저 확인해 주세요.
+              코드 확인 후 준비물과 리드줄을 확인해 주세요.{"\n"}
+              현재 코드는 목업이며 실제 확인은 연결되지 않았어요.
             </Text>
           </View>
         </View>
@@ -190,7 +195,7 @@ export default function ShelterCodeScreen({
           <Pressable
             accessibilityLabel="예약 상세 보기"
             accessibilityRole="button"
-            onPress={() => console.log("예약 상세 보기 tapped")}
+            onPress={() => router.push("/8-3")}
             style={styles.secondaryAction}
           >
             <Text style={styles.secondaryActionText}>예약 상세 보기</Text>
@@ -319,8 +324,11 @@ const styles = StyleSheet.create({
     left: 20,
     padding: 16,
     position: "absolute",
-    top: 374,
+    top: 391,
     width: 335,
+  },
+  noticeCardError: {
+    top: 412,
   },
   noticeText: {
     color: colors.brown,

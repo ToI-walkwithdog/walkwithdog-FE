@@ -52,7 +52,7 @@ export default function PrivacyPolicyScreen() {
 
           <Text style={styles.title}>개인정보 처리방침</Text>
           <Text style={styles.subtitle}>
-            매칭을 위해 개인 정보가 필요해요.{"\n"}안전하게 보관할게요.
+            현재 개인정보 안내는 목업이에요.{"\n"}실제 동의는 저장되지 않아요.
           </Text>
 
           <ConsentRow

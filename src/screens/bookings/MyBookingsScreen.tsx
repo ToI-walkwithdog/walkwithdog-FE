@@ -5,6 +5,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
 import { GradientView } from "../../components/GradientView";
+import { useMockSession } from "../../context/MockSession";
+import { filterMockBookings, type BookingFilter } from "../../context/mockSessionLogic";
+import { availableBookings } from "../../data/availableBookings";
+import { dogs } from "../../data/dogs";
 import { gradientCardCream } from "../../theme/gradients";
 import { colors, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
@@ -13,32 +17,12 @@ export type MyBookingsScreenState = "list" | "empty";
 
 type BookingStatus = "confirmed" | "pending" | "rejected" | "cancelled";
 
-const BOOKINGS: Array<{
-  status: BookingStatus;
-  label: string;
-  description: string;
-}> = [
-  {
-    status: "confirmed",
-    label: "예약 확정",
-    description: "보호소 코드를 입력하고 출발해요!",
-  },
-  {
-    status: "pending",
-    label: "승인 대기",
-    description: "보호소가 신청한 내용을 확인하고 있어요 :)",
-  },
-  {
-    status: "rejected",
-    label: "예약 거절",
-    description: "거절 사유를 확인해 주세요!",
-  },
-  {
-    status: "cancelled",
-    label: "취소 완료",
-    description: "거절 사유를 확인해 주세요!",
-  },
-];
+const STATUS: Record<BookingStatus, { label: string; description: string }> = {
+  confirmed: { label: "예약 확정", description: "보호소 코드를 입력하고 출발해요!" },
+  pending: { label: "승인 대기", description: "목업 신청은 보호소에 전송되지 않았어요." },
+  rejected: { label: "예약 거절", description: "거절 사유를 확인해 주세요!" },
+  cancelled: { label: "취소 완료", description: "앱에서 취소한 예약이에요." },
+};
 
 export function MyBookingsScreen({
   state,
@@ -46,9 +30,10 @@ export function MyBookingsScreen({
   state: MyBookingsScreenState;
 }) {
   const router = useRouter();
-  const [filter, setFilter] = useState("전체");
+  const { bookings, selectBooking } = useMockSession();
+  const [filter, setFilter] = useState<BookingFilter>("전체");
 
-  if (state === "empty") {
+  if (state === "empty" || bookings.length === 0) {
     return (
       <Screen
         backgroundColor={colors.white}
@@ -79,14 +64,7 @@ export function MyBookingsScreen({
     );
   }
 
-  const visibleBookings =
-    filter === "전체"
-      ? BOOKINGS
-      : filter === "승인 대기"
-        ? BOOKINGS.filter((booking) => booking.status === "pending")
-        : filter === "확정"
-          ? BOOKINGS.filter((booking) => booking.status === "confirmed")
-          : [];
+  const visibleBookings = filterMockBookings(bookings, filter);
 
   return (
     <Screen
@@ -117,7 +95,7 @@ export function MyBookingsScreen({
       <Text style={styles.subtitle}>신청부터 확정까지, 여기서 한눈에 봐요.</Text>
 
       <View style={styles.filters}>
-        {["전체", "승인 대기", "확정", "지난 예약"].map((item) => (
+        {(["전체", "승인 대기", "확정", "지난 예약"] as const).map((item) => (
           <Pressable
             accessibilityLabel={item}
             accessibilityRole="button"
@@ -141,12 +119,18 @@ export function MyBookingsScreen({
       </View>
 
       <View style={styles.cards}>
-        {visibleBookings.map((booking) => (
+        {visibleBookings.map((booking) => {
+          const dog = dogs.find((item) => item.id === booking.dogId);
+          const option = availableBookings.find((item) => item.dogId === booking.dogId);
+          const status = STATUS[booking.status];
+          if (!dog || !option) throw new Error("Booking dog is unavailable.");
+          return (
           <Pressable
-            accessibilityLabel={`${booking.label} 예약 상세`}
+            accessibilityLabel={`${dog.name} ${status.label} 예약 상세`}
             accessibilityRole="button"
-            key={booking.status}
+            key={booking.id}
             onPress={() => {
+              selectBooking(booking.id);
               if (booking.status === "confirmed") router.push("/8-3");
               if (booking.status === "pending") router.push("/8-4");
               if (booking.status === "rejected") router.push("/8-5");
@@ -159,17 +143,18 @@ export function MyBookingsScreen({
               style={styles.card}
             >
             <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle}>콩이와 산책</Text>
-              <Text style={styles.shelterLink}>행복 보호소 ›</Text>
+              <Text style={styles.cardTitle}>{dog.name}와 산책</Text>
+              <Text style={styles.shelterLink}>{option.shelterName} ›</Text>
               <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>{booking.label}</Text>
+                <Text style={styles.statusText}>{status.label}</Text>
               </View>
             </View>
-            <Text style={styles.schedule}>11월 12일 · 13:00–14:00</Text>
-            <Text style={styles.description}>{booking.description}</Text>
+            <Text style={styles.schedule}>{booking.schedule.date} · {booking.schedule.time}</Text>
+            <Text style={styles.description}>{status.description}</Text>
             </GradientView>
           </Pressable>
-        ))}
+        )})}
+        {visibleBookings.length === 0 ? <Text style={styles.description}>해당하는 예약이 없어요.</Text> : null}
       </View>
     </Screen>
   );

@@ -13,6 +13,7 @@ import { Icon } from "../../components/Icon";
 import { OnboardingPillButton } from "../../components/OnboardingPillButton";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
 import { checkMockIdAvailability } from "../../data/users";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
@@ -23,6 +24,7 @@ const PASSWORD_PATTERN =
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { profile, updateProfile } = useMockSession();
   const [nickname, setNickname] = useState("");
   const [nicknameChecked, setNicknameChecked] = useState(false);
   const [nicknameAvailable, setNicknameAvailable] = useState(false);
@@ -79,6 +81,7 @@ export default function RegisterScreen() {
     }
 
     setValidationMessage("");
+    updateProfile({ ...profile, nickname: nickname.trim() });
     router.push("/1-6");
   };
 

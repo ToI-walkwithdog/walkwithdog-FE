@@ -1,17 +1,25 @@
+import { useRef } from "react";
 import { useRouter } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
+import { availableBookings } from "../../data/availableBookings";
+import { dogs } from "../../data/dogs";
 import { GradientView } from "../../components/GradientView";
 import { gradientButtonWarm, gradientCardCream } from "../../theme/gradients";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
-const kongiImage = require("../../assets/images/dog-kongi.png");
-
 export default function ApplicationReviewScreen() {
   const router = useRouter();
+  const submitting = useRef(false);
+  const { draftDogId, draftScheduleIndex, applyForBooking, profile } = useMockSession();
+  const booking = availableBookings.find((item) => item.dogId === draftDogId);
+  const dog = dogs.find((item) => item.id === draftDogId);
+  const schedule = booking?.schedules[draftScheduleIndex];
+  if (!booking || !dog || !schedule) throw new Error("Selected booking is unavailable.");
 
   return (
     <Screen
@@ -40,29 +48,29 @@ export default function ApplicationReviewScreen() {
 
         <View style={styles.body}>
           <Text style={styles.title}>신청 내용을 확인해 주세요</Text>
-          <Text style={styles.subtitle}>콩이와의 첫 만남을 준비해요 :)</Text>
+          <Text style={styles.subtitle}>{dog.name}와의 만남을 준비해요 :)</Text>
 
           <GradientView token={gradientCardCream} style={styles.bookingCard}>
             <View style={styles.dogRow}>
               <Image
                 accessible={false}
                 resizeMode="cover"
-                source={kongiImage}
+                source={dog.image}
                 style={styles.dogImage}
               />
               <View>
-                <Text style={styles.dogName}>콩이</Text>
-                <Text style={styles.shelterName}>행복 보호소</Text>
+                <Text style={styles.dogName}>{dog.name}</Text>
+                <Text style={styles.shelterName}>{booking.shelterName}</Text>
               </View>
             </View>
-            <Text style={styles.schedule}>11월 13일 · 10:00–11:00</Text>
+            <Text style={styles.schedule}>{schedule.date} · {schedule.time}</Text>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>예약 번호</Text>
-              <Text style={styles.infoValue}>WG-1112-001</Text>
+              <Text style={styles.infoValue}>신청 후 확인</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>산책 시간</Text>
-              <Text style={styles.infoValue}>최대 30분</Text>
+              <Text style={styles.infoValue}>최대 {booking.maxWalkMinutes}분</Text>
             </View>
           </GradientView>
 
@@ -70,17 +78,17 @@ export default function ApplicationReviewScreen() {
             <Text style={styles.applicantTitle}>신청자 정보</Text>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>신청자</Text>
-              <Text style={styles.infoValue}>Glow 님</Text>
+              <Text style={styles.infoValue}>{profile.nickname} 님</Text>
             </View>
             <Text style={styles.applicantHint}>
-              등록된 연락처로 보호소의 연락이 가요!{"\n"}
-              연락처 변경은 내 정보 수정에서 할 수 있어요 :)
+              목업에서는 연락처가 보호소에 전달되지 않아요.{"\n"}
+              연락처 변경은 내 정보 수정에서 할 수 있어요.
             </Text>
           </View>
 
           <Text style={styles.noticeText}>
             방문 전 사전 교육과 준비물 안내를 확인해 주세요!{"\n"}
-            예약은 보호소 승인 후 확정돼요 :)
+            목업 신청은 보호소에 전송되지 않아요.
           </Text>
         </View>
 
@@ -89,8 +97,13 @@ export default function ApplicationReviewScreen() {
           <Pressable
             accessibilityLabel="예약 신청하개"
             accessibilityRole="button"
-            onPress={() => router.push("/7-5")}
-            style={styles.primaryAction}
+            onPress={() => {
+              if (submitting.current) return;
+              submitting.current = true;
+              applyForBooking();
+              router.replace("/7-5");
+            }}
+            style={styles.primaryPressable}
           >
             <Text style={styles.primaryActionText}>예약 신청하개</Text>
           </Pressable>
@@ -110,6 +123,7 @@ export default function ApplicationReviewScreen() {
 }
 
 const styles = StyleSheet.create({
+  primaryPressable: { alignItems: "center", height: 49, justifyContent: "center", width: 335 },
   root: {
     flex: 1,
     width: "100%",
@@ -233,7 +247,6 @@ const styles = StyleSheet.create({
   },
   primaryAction: {
     alignItems: "center",
-    backgroundColor: colors.midLightOrange,
     borderRadius: 27,
     height: 49,
     justifyContent: "center",

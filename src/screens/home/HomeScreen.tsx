@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import HomeDecoCircle from "../../assets/icons/home-deco-circle.svg";
 import HomeCtaBgBooking from "../../assets/icons/home-cta-bg-booking.svg";
@@ -13,7 +13,9 @@ import HomeStatusPill from "../../assets/icons/home-status-pill.svg";
 import { Icon } from "../../components/Icon";
 import { GradientView } from "../../components/GradientView";
 import { Screen } from "../../components/Screen";
-import { walkRecords } from "../../data/walkRecords";
+import { useMockSession } from "../../context/MockSession";
+import { availableBookings } from "../../data/availableBookings";
+import { dogs } from "../../data/dogs";
 import { colors, radii, shadows, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 import {
@@ -27,6 +29,11 @@ const homeStartDog = require("../../assets/images/home-start-dog.png");
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { bookings, selectBooking, records, profile } = useMockSession();
+  const confirmedBooking = bookings.find((booking) => booking.status === "confirmed");
+  const homeBooking = confirmedBooking ?? bookings[0];
+  const bookingDog = dogs.find((dog) => dog.id === homeBooking?.dogId);
+  const bookingOption = availableBookings.find((item) => item.dogId === homeBooking?.dogId);
 
   return (
     <Screen
@@ -48,7 +55,7 @@ export default function HomeScreen() {
           <View style={styles.header}>
             <Text style={styles.greeting}>
               <Text style={styles.greetingRegular}>Hello,</Text>
-              <Text style={styles.greetingBold}> Glow!</Text>
+              <Text style={styles.greetingBold}> {profile.nickname}!</Text>
             </Text>
             <Text style={styles.date}>Friday  May 9, 2026</Text>
             <Pressable
@@ -111,7 +118,14 @@ export default function HomeScreen() {
             <Pressable
               accessibilityLabel="산책 시작하개"
               accessibilityRole="button"
-              onPress={() => router.push("/4-1")}
+              onPress={() => {
+                if (!confirmedBooking) {
+                  Alert.alert("안내", "확정된 목업 예약이 없어요.");
+                  return;
+                }
+                selectBooking(confirmedBooking.id);
+                router.push("/4-1");
+              }}
               style={[styles.ctaCard, styles.ctaBottomCard]}
             >
               <HomeCtaBgStart
@@ -168,24 +182,36 @@ export default function HomeScreen() {
             </Pressable>
 
             <Pressable
-              accessibilityLabel="콩이 예약 확정"
+              accessibilityLabel="예약 상세"
               accessibilityRole="button"
-              onPress={() => router.push("/8-3")}
+              onPress={() => {
+                if (!homeBooking) {
+                  router.push("/8-1");
+                  return;
+                }
+                selectBooking(homeBooking.id);
+                if (homeBooking.status === "confirmed") router.push("/8-3");
+                else if (homeBooking.status === "pending") router.push("/8-4");
+                else if (homeBooking.status === "rejected") router.push("/8-5");
+                else router.push("/8-8");
+              }}
               style={styles.bookingCard}
             >
               <GradientView
                 token={gradientCardCream}
                 style={styles.bookingCardBackground}
               />
-              <Text style={styles.bookingDogName}>콩이와 산책</Text>
+              <Text style={styles.bookingDogName}>{bookingDog ? `${bookingDog.name}와 산책` : "예약이 없어요"}</Text>
               <View style={styles.bookingStatus}>
                 <GradientView
                   token={gradientHomeBookingStatus}
                   style={styles.bookingStatusBackground}
                 />
-                <Text style={styles.bookingStatusText}>예약 확정</Text>
+                <Text style={styles.bookingStatusText}>
+                  {homeBooking?.status === "confirmed" ? "예약 확정" : homeBooking?.status === "pending" ? "승인 대기" : homeBooking?.status === "rejected" ? "예약 거절" : homeBooking ? "취소 완료" : "예약 없음"}
+                </Text>
               </View>
-              <Text style={styles.bookingDate}>5. 12. (화) · 14:00</Text>
+              <Text style={styles.bookingDate}>{homeBooking ? `${homeBooking.schedule.date} · ${homeBooking.schedule.time}` : "산책을 신청해 보세요"}</Text>
               <View style={styles.bookingLocation}>
                 <Icon
                   name="icon-location"
@@ -194,7 +220,7 @@ export default function HomeScreen() {
                   height={14}
                   color={colors.mildLightBrown}
                 />
-                <Text style={styles.bookingPlace}>행복 보호소</Text>
+                <Text style={styles.bookingPlace}>{bookingOption?.shelterName ?? ""}</Text>
               </View>
             </Pressable>
           </View>
@@ -217,7 +243,7 @@ export default function HomeScreen() {
               />
             </Pressable>
 
-            {walkRecords.slice(0, 3).map((record, index) => (
+            {records.slice(0, 3).map((record, index) => (
               <View
                 key={record.id}
                 style={[

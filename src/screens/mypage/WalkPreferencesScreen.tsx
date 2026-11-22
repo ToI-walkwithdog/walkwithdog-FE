@@ -1,16 +1,22 @@
 import { useState } from "react";
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
+import { useMockSession } from "../../context/MockSession";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
 export default function WalkPreferencesScreen() {
   const router = useRouter();
-  const [duration, setDuration] = useState("30분 이내");
-  const [size, setSize] = useState("소형견");
+  const { preferences, updatePreferences } = useMockSession();
+  const [duration, setDuration] = useState(preferences?.duration ?? "30분 이내");
+  const [size, setSize] = useState<"소형견" | "중형견" | "대형견">(preferences?.size ?? "소형견");
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/10-1");
+  };
 
   return (
     <Screen
@@ -23,7 +29,7 @@ export default function WalkPreferencesScreen() {
           <Pressable
             accessibilityLabel="뒤로"
             accessibilityRole="button"
-            onPress={() => router.replace("/10-1")}
+            onPress={goBack}
             style={styles.backButton}
           >
             <Icon name="icon-back" size={24} width={7.41} height={12} color={colors.brown} />
@@ -33,13 +39,13 @@ export default function WalkPreferencesScreen() {
 
         <View style={styles.body}>
           <Text style={styles.title}>나에게 맞게 산책하개</Text>
-          <Text style={styles.subtitle}>검색 필터의 기본값으로 사용돼요 :)</Text>
+          <Text style={styles.subtitle}>목업에서 강아지 크기를 검색 기본값으로 사용해요.</Text>
 
           <Text style={styles.fieldLabel}>기본 활동 지역</Text>
-          <View style={styles.regionField}>
+          <Pressable accessibilityRole="button" accessibilityLabel="기본 활동 지역" onPress={() => Alert.alert("안내", "지역 선택은 아직 연결되지 않았어요. 목업 지역을 표시하고 있어요.")} style={styles.regionField}>
             <Text style={styles.regionText}>서울 성북구</Text>
             <Icon name="icon-expand-more" size={24} width={24} height={24} color={colors.brown2} />
-          </View>
+          </Pressable>
           <Text style={styles.regionHint}>상세 주소 없이 방문할 지역만 선택해요.</Text>
 
           <Text style={styles.fieldLabel}>선호 산책 시간</Text>
@@ -63,7 +69,7 @@ export default function WalkPreferencesScreen() {
 
           <Text style={styles.sizeTitle}>편하게 산책할 수 있는 크기</Text>
           <View style={styles.sizeRow}>
-            {["소형견", "중형견", "대형견"].map((item) => (
+            {(["소형견", "중형견", "대형견"] as const).map((item) => (
               <Pressable
                 accessibilityLabel={item}
                 accessibilityRole="button"
@@ -86,7 +92,10 @@ export default function WalkPreferencesScreen() {
         <Pressable
           accessibilityLabel="선호 설정 저장"
           accessibilityRole="button"
-          onPress={() => router.replace("/10-1")}
+          onPress={() => {
+            updatePreferences({ duration, size, region: "서울 성북구" });
+            goBack();
+          }}
           style={styles.saveButton}
         >
           <Text style={styles.saveText}>선호 설정 저장</Text>
