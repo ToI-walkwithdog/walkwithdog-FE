@@ -12,6 +12,20 @@ npx expo start
 Run `npm run typecheck` to check TypeScript.
 Run `node --test tests\mockSessionLogic.test.mjs` with Node.js 24 to test the mock booking and walk-record logic.
 
+## Shelter mobile web
+
+The separate `shelter-web` project contains a mobile web preview for shelter management. It uses the app's Pretendard files from `src/assets/fonts`, so build it within this repository. It uses in-memory demo data only; login, shelter verification, live tracking and backend operations are not connected. Changes are reset on refresh. Do not enter real personal data or account credentials.
+
+```sh
+cd shelter-web
+npm install
+npm run dev
+```
+
+Run `npm run build` in `shelter-web` to type-check and build the web project.
+
+Screen and backend handoff: [English](shelter-web/SCREEN_HANDOFF_EN.md) · [한국어](shelter-web/SCREEN_HANDOFF_KO.md).
+
 ## Current mock flows
 
 - **Sign-up:** Phone verification requires a valid-length number, a mock request, and test code `123456`. No SMS is sent and no actual verification or consent is recorded. Terms and privacy links on the information form open a placeholder and return to the form; the actual documents are not connected.
