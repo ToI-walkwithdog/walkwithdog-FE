@@ -28,6 +28,18 @@ export function queryForFilter(filter: BookingFilter): {
   }
 }
 
+// 예약 목록의 캐시 세대. 취소처럼 목록을 바꾸는 일이 끝나면 올리고, 목록 화면은 다시 보일 때
+// 세대가 달라졌으면 첫 페이지부터 다시 불러온다.
+let bookingsVersion = 0;
+
+export function getBookingsVersion() {
+  return bookingsVersion;
+}
+
+export function invalidateBookingsCache() {
+  bookingsVersion += 1;
+}
+
 let selectedBookingId: number | null = null;
 
 export function getSelectedBookingId() {

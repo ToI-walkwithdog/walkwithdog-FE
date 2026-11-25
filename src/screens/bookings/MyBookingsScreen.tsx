@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { routeForFailure } from "../../api/auth";
@@ -12,6 +12,7 @@ import type { ApiFailure } from "../../api/client";
 import { errorMessage } from "../../api/errorMessages";
 import {
   BOOKING_FILTERS,
+  getBookingsVersion,
   MY_BOOKINGS_PAGE_SIZE,
   queryForFilter,
   routeForBooking,
@@ -65,6 +66,8 @@ export function MyBookingsScreen(_: { state: MyBookingsScreenState }) {
   const sequence = useRef(0);
   // 다음 offset은 서버가 돌려준 원본 개수만큼 더한다. 중복을 뺀 목록 길이를 쓰지 않는다.
   const nextOffset = useRef(0);
+  // 마지막으로 불러온 시점의 캐시 세대. 취소 등으로 세대가 바뀌었으면 다시 볼 때 첫 페이지부터 새로 불러온다.
+  const seenVersion = useRef(getBookingsVersion());
 
   // 필터를 바꾸거나 새로고침하면 첫 페이지부터 다시 불러온다. 늦게 온 응답은 버린다.
   const loadFirstPage = useCallback(
@@ -100,11 +103,20 @@ export function MyBookingsScreen(_: { state: MyBookingsScreenState }) {
   );
 
   useEffect(() => {
+    seenVersion.current = getBookingsVersion();
     void loadFirstPage(filter, "initial");
     return () => {
       sequence.current += 1;
     };
   }, [filter, loadFirstPage]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (seenVersion.current === getBookingsVersion()) return;
+      seenVersion.current = getBookingsVersion();
+      void loadFirstPage(filter, "initial");
+    }, [filter, loadFirstPage]),
+  );
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;

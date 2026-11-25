@@ -6,7 +6,11 @@ import { routeForFailure } from "../../api/auth";
 import { CANCEL_REASONS, type CancelReasonCode } from "../../api/bookingCodes";
 import type { ApiFailure } from "../../api/client";
 import { errorMessage } from "../../api/errorMessages";
-import { bookingFailureMessage, routeForBooking } from "../../api/myBookings";
+import {
+  bookingFailureMessage,
+  invalidateBookingsCache,
+  routeForBooking,
+} from "../../api/myBookings";
 import { cancelWalkRequest, fetchWalkRequestDetail } from "../../api/walkRequests";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Icon } from "../../components/Icon";
@@ -100,6 +104,7 @@ export function BookingCancellationScreen({
     setSheetOpen(false);
     switch (failure.code) {
       case "REQUEST_ALREADY_CANCELLED":
+        invalidateBookingsCache();
         Alert.alert("알림", errorMessage(failure.code), [
           { text: "확인", onPress: () => router.replace("/8-8") },
         ]);
@@ -121,6 +126,7 @@ export function BookingCancellationScreen({
     // 네트워크 오류, 시간 초과, REQUEST_LOCK_CONFLICT는 서버에서 취소됐을 수도 있다. 상태를 먼저 확인한다.
     const current = await fetchWalkRequestDetail(detail.id);
     if (current.ok && current.data.status === "CANCELLED") {
+      invalidateBookingsCache();
       router.replace("/8-8");
       return;
     }
@@ -134,6 +140,8 @@ export function BookingCancellationScreen({
     try {
       const result = await cancelWalkRequest(detail.id, reason);
       if (result.ok) {
+        // 취소가 끝났으니 목록 캐시를 무효화한다. 목록은 다시 보일 때 첫 페이지부터 새로 불러온다.
+        invalidateBookingsCache();
         setSheetOpen(false);
         router.replace("/8-8");
         return;
