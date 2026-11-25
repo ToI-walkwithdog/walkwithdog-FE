@@ -35,8 +35,14 @@ export async function login(
   return res;
 }
 
-export function fetchMe(): Promise<ApiResult<Me>> {
-  return api.get<Me>("/users/me");
+// BE가 role을 소문자("user", "shelter")로 줄 수 있어, 비교하는 쪽이 모두 대문자 값을 쓰도록 한 곳에서 맞춘다.
+export function normalizeRole(role: string | null | undefined): string {
+  return (role ?? "").trim().toUpperCase();
+}
+
+export async function fetchMe(): Promise<ApiResult<Me>> {
+  const res = await api.get<Me>("/users/me");
+  return res.ok ? { ...res, data: { ...res.data, role: normalizeRole(res.data.role) } } : res;
 }
 
 export type AppRoute =

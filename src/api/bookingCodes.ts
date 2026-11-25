@@ -1,6 +1,8 @@
 // 산책 예약 화면의 라벨과 BE 코드 대응표. BE 값은 app/models.py DOG_SIZE_CODES,
 // app/walk_request_schemas.py ReservationDisplayStatus와 같다.
 
+import { normalizeRole } from "./auth";
+
 export type DogSizeCode = "SMALL" | "MEDIUM" | "LARGE";
 
 export const DOG_SIZE_LABELS: Record<DogSizeCode, string> = {
@@ -63,5 +65,6 @@ export const MY_BOOKING_DESCRIPTIONS: Record<ReservationDisplayStatus, string> =
 
 // 사용자가 아닌 쪽(보호소, 관리자)이 취소한 예약은 문구를 달리한다.
 export function cancelledBySomeoneElse(role: string | null | undefined): boolean {
-  return role === "SHELTER" || role === "ADMIN";
+  const normalized = normalizeRole(role);
+  return normalized === "SHELTER" || normalized === "ADMIN";
 }
