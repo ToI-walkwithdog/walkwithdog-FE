@@ -32,6 +32,7 @@ import { Screen } from "../../components/Screen";
 import { dogImageSource } from "../../utils/dogImage";
 import { endWalkWithConfirm, sendPendingIncident } from "./walkFlow";
 import { useWalkTracker } from "./useWalkTracker";
+import { WalkKakaoWebMapPanel } from "./WalkKakaoWebMapPanel";
 import WalkRouteLine from "../../assets/icons/walk-route-line.svg";
 import WalkRouteLocation from "../../assets/icons/walk-route-location.svg";
 import WalkRouteDot from "../../assets/icons/walk-route-dot.svg";
@@ -44,6 +45,10 @@ import { gradientButtonWarm, gradientCardCream } from "../../theme/gradients";
 const walkingMap = require("../../assets/images/walking-map.png");
 const USE_WALK_MAP_MOCKUP =
   process.env.EXPO_PUBLIC_WALK_MAP_MOCKUP !== "false";
+const KAKAO_JS_KEY = process.env.EXPO_PUBLIC_KAKAO_JS_KEY;
+// 증명용(PoC) 카카오 웹 지도. 기본은 꺼짐이고, 켜면 WALK_MAP_MOCKUP보다 우선한다.
+const USE_KAKAO_WEB_MAP =
+  process.env.EXPO_PUBLIC_WALK_MAP_KAKAO_WEB === "true";
 const KakaoWalkMap = lazy(() =>
   import("../../components/KakaoWalkMap").then((module) => ({
     default: module.KakaoWalkMap,
@@ -89,6 +94,10 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
   const [loadFailure, setLoadFailure] = useState<ApiFailure | null>(null);
   const [context, setContext] = useState<WalkContext | null>(getWalkContext());
   const [markerBusy, setMarkerBusy] = useState(false);
+  // 카카오 웹 지도가 열리지 않으면(키 없음 포함) 기존 자리 표시 지도로 되돌린다.
+  const [webMapFailed, setWebMapFailed] = useState(!KAKAO_JS_KEY);
+  const useKakaoWeb = USE_KAKAO_WEB_MAP && !webMapFailed;
+  const showMockup = USE_KAKAO_WEB_MAP ? !useKakaoWeb : USE_WALK_MAP_MOCKUP;
   const [reportBusy, setReportBusy] = useState(false);
   const [endBusy, setEndBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -359,7 +368,15 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
           </View>
 
           <View style={styles.mapCard}>
-            {USE_WALK_MAP_MOCKUP ? (
+            {useKakaoWeb && KAKAO_JS_KEY ? (
+              <WalkKakaoWebMapPanel
+                appKey={KAKAO_JS_KEY}
+                onFail={(message) => {
+                  if (__DEV__) console.warn("Kakao web map failed:", message);
+                  setWebMapFailed(true);
+                }}
+              />
+            ) : showMockup ? (
               <Image
                 accessible={false}
                 resizeMode="stretch"
@@ -372,8 +389,11 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
               </Suspense>
             )}
             {snapshot.paused ? <View style={styles.pauseOverlay} /> : null}
+            {USE_KAKAO_WEB_MAP && webMapFailed ? (
+              <Text style={styles.mapNotice}>카카오 지도를 열지 못해 임시 지도를 보여 드려요</Text>
+            ) : null}
 
-            {USE_WALK_MAP_MOCKUP ? (
+            {showMockup ? (
               <>
                 <WalkRouteLine
                   height={283.089}
@@ -814,6 +834,19 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 18,
     width: 343,
+  },
+  mapNotice: {
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderRadius: radii.large,
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: 11,
+    left: 8,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    position: "absolute",
+    top: 8,
   },
   mapImage: {
     height: 743,
