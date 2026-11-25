@@ -1,11 +1,11 @@
 import { useRef, useState, type FormEvent } from "react";
 
-import { signInAsShelter, signInErrorMessage } from "../api/auth";
+import { signInAsShelter, signInErrorMessage, type Me } from "../api/auth";
 
 type LoginPageProps = {
   // 개발 중 미리보기가 켜졌을 때만 넘어온다.
   onPreview?: (() => void) | undefined;
-  onSignedIn: () => void;
+  onSignedIn: (me: Me) => void;
   // 세션이 끝나 로그인 화면으로 돌아왔을 때 보여 줄 안내.
   notice?: string | undefined;
 };
@@ -28,7 +28,7 @@ export function LoginPage({ onPreview, onSignedIn, notice }: LoginPageProps) {
     setSubmitting(false);
     if (result.ok) {
       setPassword("");
-      onSignedIn();
+      onSignedIn(result.me);
       return;
     }
     setPassword("");

@@ -70,13 +70,14 @@ export async function dropSession(): Promise<void> {
   }
 }
 
+export function gateMessage(kind: "ROLE" | "NO_SHELTER"): string {
+  return kind === "ROLE"
+    ? "보호소 계정으로만 이용할 수 있어요. 봉사자와 관리자 계정은 이 화면에 들어올 수 없어요."
+    : "이 계정은 아직 담당 보호소에 연결되지 않았어요. 관리자에게 보호소 연결을 요청해 주세요.";
+}
+
 export function signInErrorMessage(result: Exclude<SignInResult, { ok: true }>): string {
-  if (result.kind === "ROLE") {
-    return "보호소 계정으로만 이용할 수 있어요. 봉사자와 관리자 계정은 이 화면에 들어올 수 없어요.";
-  }
-  if (result.kind === "NO_SHELTER") {
-    return "이 계정은 아직 담당 보호소에 연결되지 않았어요. 관리자에게 보호소 연결을 요청해 주세요.";
-  }
+  if (result.kind !== "API") return gateMessage(result.kind);
   const failure = result.failure;
   if (failure.code === "NETWORK_ERROR") {
     return "서버에 연결할 수 없어요. 서버가 켜져 있는지, 주소가 http://localhost:3000 인지 확인해 주세요.";

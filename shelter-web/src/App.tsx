@@ -8,6 +8,7 @@ import { HistoryPage, LivePage, ReportFormPage, ReportsPage } from "./pages/Oper
 import { ScheduleFormPage, SchedulesPage } from "./pages/SchedulesPage";
 import { SettingsPage, VerificationPage } from "./pages/SettingsPage";
 import { PageLayout } from "./components/PageLayout";
+import { useSession } from "./session";
 
 // 로그인 없이 목업을 보는 버튼은 개발 서버에서 VITE_ALLOW_DEMO_PREVIEW=true일 때만 보인다.
 const previewEnabled = import.meta.env.DEV && import.meta.env.VITE_ALLOW_DEMO_PREVIEW === "true";
@@ -23,8 +24,29 @@ export function App() {
 
   const parts = hash.replace(/^#/, "").split("/");
   const [page, action, id] = parts;
-  if ((!page || page === "login") && parts.length === 1) return <LoginPage onSignedIn={() => { window.location.hash = "dashboard"; }} onPreview={previewEnabled ? () => { window.location.hash = "dashboard"; } : undefined} />;
-  if (page === "dashboard" && parts.length === 1) return <DashboardPage onExit={() => { window.location.hash = ""; }} />;
+  const { state, signedIn, preview } = useSession();
+  const isLoginRoute = (!page || page === "login") && parts.length === 1;
+  // 로그인 화면과 (로그인 화면에서 연결된) 보호소 인증 안내만 세션 없이 볼 수 있다.
+  const isPublic = isLoginRoute || (page === "verification" && parts.length === 1);
+  const needsLogin = !isPublic && state.status === "out";
+  const alreadySignedIn = isLoginRoute && state.status === "in";
+
+  useEffect(() => {
+    if (needsLogin) window.location.hash = "login";
+    else if (alreadySignedIn) window.location.hash = "dashboard";
+  }, [needsLogin, alreadySignedIn]);
+
+  if (!isPublic && state.status === "checking") return <div className="page-shell"><p className="empty-text" role="status">로그인 상태를 확인하고 있어요.</p></div>;
+  if (isLoginRoute && state.status === "checking") return <div className="page-shell"><p className="empty-text" role="status">로그인 상태를 확인하고 있어요.</p></div>;
+  if (alreadySignedIn) return null;
+  if (isLoginRoute || needsLogin) {
+    return <LoginPage
+      onSignedIn={(me) => { signedIn(me); window.location.hash = "dashboard"; }}
+      onPreview={previewEnabled ? () => { preview(); window.location.hash = "dashboard"; } : undefined}
+      notice={state.status === "out" ? state.notice : undefined}
+    />;
+  }
+  if (page === "dashboard" && parts.length === 1) return <DashboardPage />;
   if (page === "verification" && parts.length === 1) return <VerificationPage />;
   if (page === "dogs" && parts.length === 1) return <DogsPage />;
   if (page === "dogs" && action === "new" && parts.length === 2) return <DogFormPage key={hash} />;

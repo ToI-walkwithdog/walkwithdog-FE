@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { useSession } from "../session";
+
 type PageLayoutProps = {
   title: string;
   description: string;
@@ -8,13 +10,17 @@ type PageLayoutProps = {
 };
 
 export function PageLayout({ title, description, back = "#dashboard", children }: PageLayoutProps) {
+  const { signOut } = useSession();
   return (
     <div className="page-shell dashboard-shell">
       <header className="dashboard-header">
         <div className="dashboard-header-inner">
           <a className="back-link" href={back}>이전</a>
           <span className="header-page-title">{title}</span>
-          <a className="text-button" href="#dashboard">홈</a>
+          <span className="header-actions">
+            <a className="text-button" href="#dashboard">홈</a>
+            <button className="text-button" type="button" onClick={() => void signOut()}>로그아웃</button>
+          </span>
         </div>
       </header>
       <main className="inner-main">

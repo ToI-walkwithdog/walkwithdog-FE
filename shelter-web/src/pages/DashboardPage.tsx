@@ -1,8 +1,5 @@
 import { useDemo } from "../DemoContext";
-
-type DashboardPageProps = {
-  onExit: () => void;
-};
+import { useSession } from "../session";
 
 const menuItems = [
   { title: "강아지 관리", description: "보호견 정보와 사진", href: "#dogs" },
@@ -14,7 +11,8 @@ const menuItems = [
   { title: "보호소 설정", description: "보호소 정보와 인증", href: "#settings" },
 ];
 
-export function DashboardPage({ onExit }: DashboardPageProps) {
+export function DashboardPage() {
+  const { signOut } = useSession();
   const { shelter, dogs, schedules, bookings, reports } = useDemo();
   const pending = bookings.filter((booking) => booking.status === "pending");
   const unreadReports = reports.filter((report) => report.kind === "incoming" && !report.reviewed);
@@ -27,7 +25,7 @@ export function DashboardPage({ onExit }: DashboardPageProps) {
             <span className="brand-divider" aria-hidden="true" />
             <span className="brand-caption">보호소</span>
           </div>
-          <button className="text-button" type="button" onClick={onExit}>미리보기 종료</button>
+          <button className="text-button" type="button" onClick={() => void signOut()}>로그아웃</button>
         </div>
       </header>
 
