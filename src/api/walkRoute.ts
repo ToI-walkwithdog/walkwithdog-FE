@@ -3,7 +3,7 @@
 // 좌표는 limit=500, offset을 서버가 돌려준 개수만큼 올려 point_count까지 모두 읽는다.
 // 마커와 신고는 같은 limit/offset으로 따로 나뉘어 매 페이지에 되풀이되므로 여기서 읽지 않고 요약에서만 가져온다.
 import type { ApiResult } from "./client";
-import { fetchWalkDetail } from "./walks";
+import { fetchWalkDetail, type MarkerType, type WalkDetailPoint } from "./walks";
 import { toNumber } from "../utils/walkFormat";
 
 // 아래 세 값은 서버의 실제 이동 분석(app/gps_motion_config.py, MotionConfig V1)과 같다.
@@ -41,16 +41,44 @@ function distanceM(a: RoutePoint, b: RoutePoint): number {
   return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-export async function loadWalkRoute(walkId: number): Promise<ApiResult<WalkRoute>> {
+// 서버에서 받았거나 기기에서 방금 기록한 좌표 한 개. 경로 구간을 나누는 데 필요한 값만 담는다.
+export type RawRoutePoint = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  // 관측 시각(ms)
+  atMs: number;
+  sequenceNo: number;
+  // 좌표나 시각을 해석하지 못한 서버 좌표. 그리지 않고 앞뒤를 잇지도 않는다.
+  invalid?: true;
+};
+
+// 서버 마커(GET /walks/{id}의 markers). client_marker_id는 응답에 없다.
+export type DetailMarker = {
+  id: number;
+  marker_type: MarkerType;
+  latitude: string | number;
+  longitude: string | number;
+  memo: string | null;
+};
+
+export function toRawRoutePoint(raw: WalkDetailPoint): RawRoutePoint {
+  const latitude = toNumber(raw.latitude);
+  const longitude = toNumber(raw.longitude);
+  const at = Date.parse(raw.recorded_at);
+  if (latitude === null || longitude === null || Number.isNaN(at)) {
+    return { latitude: 0, longitude: 0, accuracy: null, atMs: 0, sequenceNo: raw.sequence_no, invalid: true };
+  }
+  return { latitude, longitude, accuracy: toNumber(raw.accuracy_m), atMs: at, sequenceNo: raw.sequence_no };
+}
+
+// 좌표를 순서대로 넣으며 구간을 나눈다. 5-1(실시간), 6-2(저장된 경로)가 모두 같은 규칙을 쓴다.
+// 이전 좌표의 정보는 add를 부르는 사이에도 이어서 쓴다(서버 페이지 경계에서도 같은 검사를 한다).
+export function createRouteBuilder() {
   const segments: RoutePoint[][] = [];
   let current: RoutePoint[] = [];
-  // 이전 좌표의 정보는 페이지가 바뀌어도 이어서 쓴다(페이지 경계에서도 같은 검사를 한다).
   let previous: { point: RoutePoint; at: number; sequence: number } | null = null;
-  let offset = 0;
-  let total = 0;
-  let received = 0;
   let skipped = 0;
-  let status = 200;
 
   const breakSegment = () => {
     if (current.length > 0) segments.push(current);
@@ -58,53 +86,98 @@ export async function loadWalkRoute(walkId: number): Promise<ApiResult<WalkRoute
     previous = null;
   };
 
+  const add = (raw: RawRoutePoint) => {
+    if (raw.invalid) {
+      breakSegment();
+      return;
+    }
+    const { latitude, longitude, accuracy, atMs: at } = raw;
+    // 정확도가 없거나 나쁜 좌표는 그리지 않고, 그 앞뒤를 선으로 잇지도 않는다.
+    if (accuracy === null || accuracy < 0 || accuracy > ROUTE_MAX_ACCURACY_M) {
+      skipped += 1;
+      breakSegment();
+      return;
+    }
+    const point = { latitude, longitude };
+    if (previous !== null) {
+      const seconds = (at - previous.at) / 1000;
+      const consecutive = raw.sequenceNo === previous.sequence + 1;
+      // 간격이 길거나, 순번이 이어지지 않거나, 시각이 늘지 않거나, 속도가 비정상이면 선을 잇지 않는다.
+      if (
+        !consecutive ||
+        seconds <= 0 ||
+        seconds > ROUTE_MAX_GAP_SECONDS ||
+        distanceM(previous.point, point) / seconds > ROUTE_MAX_SPEED_M_S
+      ) {
+        breakSegment();
+      }
+    }
+    current.push(point);
+    previous = { point, at, sequence: raw.sequenceNo };
+  };
+
+  const finish = (): RoutePoint[][] => (current.length > 0 ? [...segments, current] : [...segments]);
+
+  return { add, finish, skippedCount: () => skipped };
+}
+
+// 이미 가진 좌표 목록 전체로 구간을 만든다(실시간 화면이 좌표가 늘 때마다 다시 계산한다).
+export function buildRouteSegments(points: RawRoutePoint[]): RoutePoint[][] {
+  const builder = createRouteBuilder();
+  for (const point of points) builder.add(point);
+  return builder.finish();
+}
+
+export type RawWalkRecord = {
+  points: RawRoutePoint[];
+  markers: DetailMarker[];
+  pointCount: number;
+  truncated: boolean;
+};
+
+// 서버의 산책 좌표를 500개씩 모두 읽는다. 마커는 매 페이지에 되풀이되므로 첫 페이지 것만 쓴다.
+export async function loadRawWalkRecord(walkId: number): Promise<ApiResult<RawWalkRecord>> {
+  const points: RawRoutePoint[] = [];
+  let markers: DetailMarker[] = [];
+  let offset = 0;
+  let total = 0;
+  let received = 0;
+  let status = 200;
+
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const result = await fetchWalkDetail(walkId, PAGE_SIZE, offset);
     if (!result.ok) return result;
     status = result.status;
     total = result.data.point_count;
-    const points = result.data.points;
-    for (const raw of points) {
-      const latitude = toNumber(raw.latitude);
-      const longitude = toNumber(raw.longitude);
-      const accuracy = toNumber(raw.accuracy_m);
-      const at = Date.parse(raw.recorded_at);
-      if (latitude === null || longitude === null || Number.isNaN(at)) {
-        breakSegment();
-        continue;
-      }
-      // 정확도가 없거나 나쁜 좌표는 그리지 않고, 그 앞뒤를 선으로 잇지도 않는다.
-      if (accuracy === null || accuracy < 0 || accuracy > ROUTE_MAX_ACCURACY_M) {
-        skipped += 1;
-        breakSegment();
-        continue;
-      }
-      const point = { latitude, longitude };
-      if (previous !== null) {
-        const seconds = (at - previous.at) / 1000;
-        const consecutive = raw.sequence_no === previous.sequence + 1;
-        // 간격이 길거나, 순번이 이어지지 않거나, 시각이 늘지 않거나, 속도가 비정상이면 선을 잇지 않는다.
-        if (
-          !consecutive ||
-          seconds <= 0 ||
-          seconds > ROUTE_MAX_GAP_SECONDS ||
-          distanceM(previous.point, point) / seconds > ROUTE_MAX_SPEED_M_S
-        ) {
-          breakSegment();
-        }
-      }
-      current.push(point);
-      previous = { point, at, sequence: raw.sequence_no };
+    if (page === 0) markers = result.data.markers ?? [];
+    for (const raw of result.data.points) {
+      points.push(toRawRoutePoint(raw));
     }
     // offset은 서버가 돌려준 원본 개수만큼 올린다.
-    received += points.length;
-    offset += points.length;
-    if (points.length === 0 || offset >= total) break;
+    received += result.data.points.length;
+    offset += result.data.points.length;
+    if (result.data.points.length === 0 || offset >= total) break;
   }
-  if (current.length > 0) segments.push(current);
   return {
     ok: true,
     status,
-    data: { segments, pointCount: total, skippedCount: skipped, truncated: received < total },
+    data: { points, markers, pointCount: total, truncated: received < total },
+  };
+}
+
+export async function loadWalkRoute(walkId: number): Promise<ApiResult<WalkRoute>> {
+  const record = await loadRawWalkRecord(walkId);
+  if (!record.ok) return record;
+  const builder = createRouteBuilder();
+  for (const point of record.data.points) builder.add(point);
+  return {
+    ok: true,
+    status: record.status,
+    data: {
+      segments: builder.finish(),
+      pointCount: record.data.pointCount,
+      skippedCount: builder.skippedCount(),
+      truncated: record.data.truncated,
+    },
   };
 }

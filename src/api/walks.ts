@@ -176,6 +176,14 @@ export type WalkDetail = {
   handover_status: HandoverStatus;
   point_count: number;
   points: WalkDetailPoint[];
+  // 마커는 좌표와 같은 limit/offset으로 나뉘어 매 페이지에 되풀이된다. 응답에 client_marker_id는 없다.
+  markers?: {
+    id: number;
+    marker_type: MarkerType;
+    latitude: string | number;
+    longitude: string | number;
+    memo: string | null;
+  }[];
 };
 
 export function fetchWalkDetail(walkId: number, limit = 1, offset = 0) {

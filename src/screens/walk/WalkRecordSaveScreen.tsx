@@ -22,6 +22,7 @@ import { Icon } from "../../components/Icon";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
 import { GradientView } from "../../components/GradientView";
+import { KakaoWebMap, type KakaoWebMapMarker } from "../../components/KakaoWebMap";
 import { WalkRouteMap, type RouteMarker } from "../../components/WalkRouteMap";
 import { gradientWalkMemoCard, gradientWalkSaveButton } from "../../theme/gradients";
 import { colors, radii, typography } from "../../theme/tokens";
@@ -40,6 +41,9 @@ const MAP_WIDTH = 343;
 const MAP_HEIGHT = 332;
 
 const walkingMap = require("../../assets/images/walking-map.png");
+const KAKAO_JS_KEY = process.env.EXPO_PUBLIC_KAKAO_JS_KEY;
+// 5-1과 같은 플래그다. 켜면 저장된 경로를 카카오 지도에 그리고, 열리지 않으면 기존 자리 표시 지도로 되돌린다.
+const USE_KAKAO_WEB_MAP = process.env.EXPO_PUBLIC_WALK_MAP_KAKAO_WEB === "true";
 
 export default function WalkRecordSaveScreen() {
   const router = useRouter();
@@ -48,6 +52,7 @@ export default function WalkRecordSaveScreen() {
   const [result, setResult] = useState<WalkResult | null>(null);
   const [summary, setSummary] = useState<WalkSummary | null>(null);
   const [route, setRoute] = useState<WalkRoute | null>(null);
+  const [kakaoMapFailed, setKakaoMapFailed] = useState(!KAKAO_JS_KEY);
   const [message, setMessage] = useState("");
   const [memoError, setMemoError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -152,6 +157,19 @@ export default function WalkRecordSaveScreen() {
       ? []
       : [{ id: marker.id, type: marker.marker_type, memo: marker.memo, latitude, longitude }];
   });
+
+  // 카카오 지도에 그릴 경로. 점이 2개 미만이면 선을 그릴 수 없어 지도 대신 안내를 보여 준다.
+  const routePointCount = route ? route.segments.reduce((sum, segment) => sum + segment.length, 0) : 0;
+  const kakaoMarkers: KakaoWebMapMarker[] = markers.map((marker) => ({
+    key: `srv-${marker.id}`,
+    type: marker.type,
+    memo: marker.memo,
+    latitude: marker.latitude,
+    longitude: marker.longitude,
+    status: "saved",
+  }));
+  const showKakaoMap = USE_KAKAO_WEB_MAP && !kakaoMapFailed && route !== null && routePointCount >= 2;
+  const showKakaoEmpty = USE_KAKAO_WEB_MAP && !kakaoMapFailed && route !== null && routePointCount < 2;
 
   // 메모를 저장한다. 계속 진행해도 되면 true, 멈춰야 하면 false를 돌려준다.
   // 첫 저장은 expected_version=0, 수정은 서버의 현재 버전을 쓴다. 서버에 이미 있는 메모를 조용히 덮어쓰지 않는다.
@@ -300,6 +318,19 @@ export default function WalkRecordSaveScreen() {
 
           <View style={styles.card}>
             <View style={styles.mapArea}>
+              {showKakaoMap && route && KAKAO_JS_KEY ? (
+                <KakaoWebMap
+                  appKey={KAKAO_JS_KEY}
+                  markers={kakaoMarkers}
+                  onError={(message) => {
+                    if (__DEV__) console.warn("Kakao web map failed:", message);
+                    setKakaoMapFailed(true);
+                  }}
+                  readOnly
+                  segments={route.segments}
+                />
+              ) : (
+                <>
               <Image
                 accessible={false}
                 resizeMode="stretch"
@@ -321,6 +352,11 @@ export default function WalkRecordSaveScreen() {
                   segments={route.segments}
                   width={MAP_WIDTH}
                 />
+              ) : null}
+                </>
+              )}
+              {showKakaoEmpty ? (
+                <Text style={styles.mapEmpty}>기록된 이동 경로가 없어요</Text>
               ) : null}
               <Pressable
                 accessibilityLabel="지도 이미지 다운로드"
@@ -527,6 +563,19 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -140,
     width: 343,
+  },
+  mapEmpty: {
+    alignSelf: "center",
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderRadius: radii.large,
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: 13,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    position: "absolute",
+    top: 150,
   },
   mapFade: {
     height: 600,

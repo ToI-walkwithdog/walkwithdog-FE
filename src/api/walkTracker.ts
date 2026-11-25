@@ -14,6 +14,8 @@ import { AppState } from "react-native";
 
 import type { ApiFailure, ApiResult } from "./client";
 import { newUuid } from "./uuid";
+import { loadRawWalkRecord, type DetailMarker, type RawRoutePoint } from "./walkRoute";
+import { toNumber } from "../utils/walkFormat";
 import { setEndedWalk } from "./walkSession";
 import {
   endWalk,
@@ -57,6 +59,18 @@ export type EndInfo = {
   unsentCount: number;
 };
 
+// 5-1 지도에 그리는 이번 산책의 마커. 탭 즉시 pending으로 그리고, 저장이 끝나면 saved가 된다.
+// key는 새로 만든 마커는 client_marker_id, 서버에서 불러온 마커는 "srv-{id}"다.
+export type LiveMarker = {
+  key: string;
+  type: MarkerType;
+  memo: string | null;
+  latitude: number;
+  longitude: number;
+  status: "pending" | "saved";
+  serverId: number | null;
+};
+
 export type TrackerSnapshot = {
   walkId: number | null;
   startedAtMs: number;
@@ -69,6 +83,9 @@ export type TrackerSnapshot = {
   // 마지막으로 위치를 받은(또는 수집을 다시 시작한) 기기 시각. 아직 없으면 null.
   lastFixReceivedAt: number | null;
   unsentCount: number;
+  // 이번 산책에서 기록한 좌표 전체(보낸 것 포함)와 마커. 5-1 지도가 경로와 마커를 그리는 데 쓴다.
+  routePoints: RawRoutePoint[];
+  markers: LiveMarker[];
   // 서버에서 이미 끝난 산책이다(자동 종료 포함). 더는 보내지 않는다.
   ended: EndInfo | null;
   authLost: boolean;
@@ -83,6 +100,8 @@ type State = {
   lastPointAtMs: number;
   lastSampleAtMs: number;
   buffer: WalkPointBody[];
+  routePoints: RawRoutePoint[];
+  markers: LiveMarker[];
   lastFix: Fix | null;
   lastSampleFix: Fix | null;
   lastFixReceivedAt: number | null;
@@ -103,6 +122,8 @@ function initialState(): State {
     lastPointAtMs: 0,
     lastSampleAtMs: 0,
     buffer: [],
+    routePoints: [],
+    markers: [],
     lastFix: null,
     lastSampleFix: null,
     lastFixReceivedAt: null,
@@ -133,6 +154,8 @@ function makeSnapshot(): TrackerSnapshot {
     permission: state.permission,
     lastFixReceivedAt: state.lastFixReceivedAt,
     unsentCount: state.buffer.length,
+    routePoints: state.routePoints,
+    markers: state.markers,
     ended: state.ended,
     authLost: state.authLost,
   };
@@ -198,6 +221,11 @@ function reconcileQueue(lastSequenceNo: number | null) {
     state.buffer.forEach((point, index) => {
       point.sequence_no = last + 1 + index;
     });
+    // 다시 매긴 순번을 경로 좌표에도 맞춘다(보내지 않은 좌표는 routePoints의 맨 뒤 구간이다).
+    const unsentFrom = state.routePoints.length - state.buffer.length;
+    state.routePoints = state.routePoints.map((point, index) =>
+      index >= unsentFrom ? { ...point, sequenceNo: last + 1 + (index - unsentFrom) } : point,
+    );
   }
   state.nextSequence = last + 1 + state.buffer.length;
 }
@@ -216,6 +244,8 @@ export function attachWalk(active: ActiveWalk) {
       state.startedAtMs,
       active.last_point_recorded_at ? Date.parse(active.last_point_recorded_at) : 0,
     );
+    // 앱을 다시 열었을 때: 서버에 이미 저장된 좌표와 마커를 불러와 지도에 다시 그린다.
+    void seedRecordedData(active.walk_id);
   } else {
     applyClock(active);
     reconcileQueue(active.last_sequence_no);
@@ -226,6 +256,47 @@ export function attachWalk(active: ActiveWalk) {
   state.authLost = false;
   state.ended = null;
   ensureAppStateListener();
+  emit();
+}
+
+// 서버 마커를 이미 가진 것(저장 완료, 저장 중인 같은 위치)과 겹치지 않게 합친다.
+// 서버 응답에는 client_marker_id가 없어서, 저장이 끝난 마커는 serverId로, 저장 중인 마커는 종류와 위치로 거른다.
+function mergeServerMarkers(list: DetailMarker[]) {
+  const additions: LiveMarker[] = [];
+  for (const marker of list) {
+    const latitude = toNumber(marker.latitude);
+    const longitude = toNumber(marker.longitude);
+    if (latitude === null || longitude === null) continue;
+    const duplicate = [...state.markers, ...additions].some(
+      (known) =>
+        known.serverId === marker.id ||
+        (known.status === "pending" &&
+          known.type === marker.marker_type &&
+          Math.abs(known.latitude - latitude) < 1e-5 &&
+          Math.abs(known.longitude - longitude) < 1e-5),
+    );
+    if (duplicate) continue;
+    additions.push({
+      key: `srv-${marker.id}`,
+      type: marker.marker_type,
+      memo: marker.memo,
+      latitude,
+      longitude,
+      status: "saved",
+      serverId: marker.id,
+    });
+  }
+  if (additions.length > 0) state.markers = [...state.markers, ...additions];
+}
+
+async function seedRecordedData(walkId: number) {
+  const record = await loadRawWalkRecord(walkId);
+  if (!record.ok || state.walkId !== walkId) return;
+  const lastServerSequence = record.data.points.reduce((max, point) => Math.max(max, point.sequenceNo), -1);
+  // 불러오는 사이 기기에서 새로 기록한 좌표는 순번이 서버 마지막 이후라서 뒤에 이어 붙인다.
+  const local = state.routePoints.filter((point) => point.sequenceNo > lastServerSequence);
+  state.routePoints = [...record.data.points, ...local];
+  mergeServerMarkers(record.data.markers);
   emit();
 }
 
@@ -261,13 +332,24 @@ function onFix(location: Location.LocationObject) {
     state.lastSampleFix = fix;
     state.lastSampleAtMs = atMs;
     state.lastPointAtMs = atMs;
-    state.buffer.push({
+    const body: WalkPointBody = {
       sequence_no: state.nextSequence++,
       latitude: Number(fix.latitude.toFixed(6)),
       longitude: Number(fix.longitude.toFixed(6)),
       recorded_at: new Date(atMs).toISOString(),
       accuracy_m: accuracy === null ? null : Number(accuracy.toFixed(2)),
-    });
+    };
+    state.buffer.push(body);
+    state.routePoints = [
+      ...state.routePoints,
+      {
+        latitude: body.latitude,
+        longitude: body.longitude,
+        accuracy: body.accuracy_m,
+        atMs,
+        sequenceNo: body.sequence_no,
+      },
+    ];
   }
   emit();
 }
@@ -529,12 +611,53 @@ export async function sendMarker(item: MarkerRequest): Promise<ApiResult<{ id: n
       client_marker_id: newUuid(),
     };
     pendingMarkers.set(item.label, body);
+    // 위치를 알면 서버 응답을 기다리지 않고 바로 지도에 올린다.
+    if (body.latitude !== undefined && body.longitude !== undefined) {
+      state.markers = [
+        ...state.markers,
+        {
+          key: body.client_marker_id,
+          type: body.marker_type,
+          memo: body.memo ?? null,
+          latitude: body.latitude,
+          longitude: body.longitude,
+          status: "pending",
+          serverId: null,
+        },
+      ];
+      emit();
+    }
   }
   await flushPoints(); // 서버가 최근 좌표로 위치를 채울 수 있게 먼저 보낸다.
   await waitForServerClock(Date.parse(body.recorded_at));
   const result = await postWalkMarker(walkId, body);
   if (!isUnknownOutcome(result)) pendingMarkers.delete(item.label);
+  if (state.walkId === walkId) {
+    const key = body.client_marker_id;
+    if (result.ok) {
+      if (state.markers.some((marker) => marker.key === key)) {
+        state.markers = state.markers.map((marker) =>
+          marker.key === key ? { ...marker, status: "saved", serverId: result.data.id } : marker,
+        );
+        emit();
+      } else {
+        // 탭 때 위치를 몰라 서버가 채웠다면 서버 목록에서 이 마커를 가져온다.
+        void refreshServerMarkers(walkId);
+      }
+    } else if (!isUnknownOutcome(result)) {
+      // 저장에 실패했다: 지도에서 뺀다. 결과를 모르는 실패는 같은 키로 다시 보낼 때까지 남겨 둔다.
+      state.markers = state.markers.filter((marker) => marker.key !== key);
+      emit();
+    }
+  }
   return result;
+}
+
+async function refreshServerMarkers(walkId: number) {
+  const detail = await fetchWalkDetail(walkId, 500, 0);
+  if (!detail.ok || state.walkId !== walkId) return;
+  mergeServerMarkers(detail.data.markers ?? []);
+  emit();
 }
 
 export type IncidentDraft = {
