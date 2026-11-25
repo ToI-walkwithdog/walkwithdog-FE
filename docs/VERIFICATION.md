@@ -339,3 +339,41 @@ GPS 좌표는 실제로 움직여야 바뀐다(좌표는 약 10초마다 기록)
 10. 걷는 중 앱을 종료했다가 다시 열면 이미 기록된 선이 다시 그려지는지.
 11. 산책을 끝내고 6-2에서 저장된 경로와 마커가 지도에 그려지고 경로 전체가 보이도록 맞는지. 좌표가 거의 없는 산책(서서 끝냄)은 "기록된 이동 경로가 없어요"가 나오는지.
 12. `EXPO_PUBLIC_WALK_MAP_KAKAO_WEB`를 지우거나 키를 잘못 넣으면 5-1, 6-2가 기존 자리 표시 지도와 안내로 돌아오는지.
+
+## shelter-web (보호소 웹) 로그인, 세션, 로그아웃 (연동 1~4단계)
+
+### 구현함, 브라우저에서 미확인
+- `npm run build`(tsc, vite build)와 개발 서버가 `http://localhost:3000`에서 뜨는 것(HTTP 200)만 확인했다. 로그인과 API 호출은 브라우저에서 실행하지 않았다.
+- 포트: BE의 CORS가 `http://localhost:3000`, `http://127.0.0.1:3000`만 허용한다(BE에 고정). Vite를 `localhost:3000`, `strictPort`로 고정했고 프록시는 없다. 3000이 사용 중이면 실행이 실패한다(다른 포트로 넘어가지 않음). 주소창도 `localhost`로 연다(LAN IP 불가).
+- API 클라이언트(`shelter-web/src/api/client.ts`): 앱 것을 복사. 10초 타임아웃, JSON이 아닌 2xx는 `INVALID_RESPONSE`, 오류 정규화(`{code,data,message}`, `{detail: 문자열|객체|배열}`). 401은 주입된 핸들러가 처리한다. Base URL은 `VITE_API_BASE_URL`(`.env.example`의 기본값 `http://localhost:8000`, 실제 값은 git에서 제외되는 `.env.local`).
+- 토큰: `sessionStorage`(탭을 닫으면 사라짐)와 메모리. `localStorage`는 쓰지 않고 로그에 남기지 않는다.
+- 로그인: `POST /auth/login` → `GET /users/me`(role을 대문자로 정규화) → role `SHELTER`이고 `shelter_id`가 있을 때만 `#dashboard`. 그 밖의 role(ADMIN, USER 포함)이나 `shelter_id`가 null이면 `POST /auth/logout` 한 번, 토큰 삭제, 안내 문구.
+- 오류 문구: 401 아이디 또는 비밀번호, 429 대기 초(본문 `data.retry_after_seconds`), 네트워크/CORS "서버에 연결할 수 없어요", 409 잠금 충돌(자동 재시도 없음).
+- 세션 가드: `#login`과 `#verification`(로그인 화면의 안내 링크) 외의 모든 경로는 세션이 필요하다. 처음 열 때 `/users/me`를 한 번만 확인한다. 어디서든 401이면 토큰을 지우고 `#login`으로 가며 "다시 로그인해 주세요."를 보여 준다.
+- 로그아웃: 상단 "로그아웃". `POST /auth/logout`을 한 번만 부르고(재시도 없음), 실패해도 토큰을 지우고 `#login`으로 간다.
+- 개발용 미리보기 버튼: `npm run dev`에서 `VITE_ALLOW_DEMO_PREVIEW=true`일 때만 보인다. 빌드에는 나오지 않는다.
+- 강아지, 일정, 예약, 신고, 이력, 설정 화면은 아직 `DemoContext`의 예시 데이터다(10단계에서 교체). "목업 미리보기" 배너도 그대로다.
+
+### 실행
+```
+cd shelter-web
+npm install
+copy .env.example .env.local   (필요하면 VITE_API_BASE_URL 수정)
+npm run dev                     → http://localhost:3000
+```
+BE는 `http://localhost:8000`에서 떠 있어야 한다.
+
+### 수동 테스트 (브라우저, 로컬 BE)
+비밀번호는 직접 입력한다. 문서와 로그에 적지 않는다.
+1. `http://localhost:3000`을 연다 → 로그인 화면. 개발자 도구 Network에서 `localhost:8000` 호출이 CORS 오류 없이 되는지 본다.
+2. `shelter01`로 로그인 → `#dashboard`. Network에 `/auth/login`, `/users/me`가 순서대로 있다.
+3. 새로고침(F5) → 로그인 화면을 거치지 않고 대시보드가 유지된다. 주소를 `#dogs`로 직접 바꿔도 열린다.
+4. 탭을 닫고 새 탭에서 열기 → 로그인 화면(sessionStorage는 탭마다다).
+5. 틀린 비밀번호 → "아이디 또는 비밀번호가 맞지 않아요." 비밀번호 칸이 비워진다.
+6. 10번 넘게 연속 실패 → "N초 뒤에 다시 시도해 주세요."(N은 서버가 준 값).
+7. 일반 사용자 계정으로 로그인 → 보호소 계정 전용 안내가 나오고 대시보드로 가지 않는다. Network에 `/auth/logout`이 한 번이다. 개발자 도구 Application → Session Storage에 토큰이 남아 있지 않다.
+8. (가능하면) `shelter_id`가 없는 SHELTER 계정 → 담당 보호소 미연결 안내.
+9. 로그인한 뒤 Session Storage의 `shelter_access_token`을 지우거나 값을 바꾸고 다른 화면으로 이동/새로고침 → `#login`과 "다시 로그인해 주세요."
+10. 로그아웃 클릭 → `#login`. Network에 `/auth/logout`이 한 번이고, 뒤로 가기로 대시보드에 가면 다시 로그인 화면이다.
+11. BE를 끄고 로그인 → "서버에 연결할 수 없어요."
+12. 로그아웃 요청이 실패해도(BE 종료 후 클릭) 로그인 화면으로 돌아가는지.
