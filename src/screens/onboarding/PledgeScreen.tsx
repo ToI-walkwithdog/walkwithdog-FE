@@ -23,13 +23,10 @@ import { fontFamilies } from "../../theme/typography";
 
 const pawStamp = require("../../assets/images/paw-1.png");
 
-// 도장 효과. Figma 서약 화면의 "발바닥 도장"(111.4x111.4, 카드 오른쪽 아래) 자리에 찍는다.
-// 크기는 1:1 한 값만 쓴다(원본 paw-1.png가 512x512).
-const STAMP_SIZE = 104;
-const STAMP_CENTER_X = 304.7;
-const STAMP_CENTER_Y = 603.7;
-const STAMP_INK_OPACITY = 0.75;
-const STAMP_TILT = -8;
+// 도장 효과. 도장은 하나(Figma "발바닥 도장" = icon-paw-stamp, 1:1 프레임 111.437 안에 원본 비율 80.023x73.389)이고,
+// 누르기 전에는 투명하다가 애니메이션 뒤 Figma의 최종 위치, 크기, 불투명도(1)로 남는다.
+const STAMP_FINAL_OPACITY = 1;
+const STAMP_START_TILT = -8; // 떨어질 때만 기울어 있고, 닿으면 Figma 모습(0도)이 된다.
 const STAMP_DROP_MS = 340; // 1.8배에서 1.0배로 떨어진다(ease-in).
 const STAMP_HOLD_MS = 400; // 찍힌 뒤 잠시 머문다.
 const STAMP_FADE_OUT_MS = 200;
@@ -44,7 +41,7 @@ export default function PledgeScreen() {
   const [busy, setBusy] = useState(false);
   const stampScale = useRef(new Animated.Value(1.8)).current;
   const stampOpacity = useRef(new Animated.Value(0)).current;
-  const stampTilt = useRef(new Animated.Value(-14)).current;
+  const stampTilt = useRef(new Animated.Value(STAMP_START_TILT)).current;
   const shakeX = useRef(new Animated.Value(0)).current;
   const pressY = useRef(new Animated.Value(0)).current;
 
@@ -71,19 +68,19 @@ export default function PledgeScreen() {
   const playStamp = (): Promise<boolean> => {
     const reduced = reduceMotionRef.current;
     stampScale.setValue(reduced ? 1 : 1.8);
-    stampTilt.setValue(reduced ? STAMP_TILT : -14);
+    stampTilt.setValue(reduced ? 0 : STAMP_START_TILT);
     stampOpacity.setValue(0);
     shakeX.setValue(0);
     pressY.setValue(0);
 
     // "동작 줄이기" 설정이면 흔들림과 튕김 없이 도장이 서서히 나타나기만 한다.
     const animation = reduced
-      ? Animated.sequence([timing(stampOpacity, STAMP_INK_OPACITY, STAMP_REDUCED_FADE_MS), Animated.delay(STAMP_HOLD_MS)])
+      ? Animated.sequence([timing(stampOpacity, STAMP_FINAL_OPACITY, STAMP_REDUCED_FADE_MS), Animated.delay(STAMP_HOLD_MS)])
       : Animated.sequence([
           Animated.parallel([
             timing(stampScale, 1, STAMP_DROP_MS, Easing.in(Easing.cubic)),
-            timing(stampTilt, STAMP_TILT, STAMP_DROP_MS, Easing.in(Easing.cubic)),
-            timing(stampOpacity, STAMP_INK_OPACITY, 220),
+            timing(stampTilt, 0, STAMP_DROP_MS, Easing.in(Easing.cubic)),
+            timing(stampOpacity, STAMP_FINAL_OPACITY, 220),
           ]),
           // 닿는 순간: 도장이 살짝 눌렸다 튕기고, 카드가 눌리며 화면이 짧게 흔들린다.
           Animated.parallel([
@@ -234,22 +231,11 @@ export default function PledgeScreen() {
             </Text>
           </View>
 
-          <View style={styles.decorativePawFrame}>
-            <Icon
-              name="icon-paw-stamp"
-              size={111.437}
-              width={80.023}
-              height={73.389}
-            />
-          </View>
-        </Animated.View>
-
-        <View pointerEvents="none" style={styles.stampLayer}>
-          <Animated.Image
-            accessible={false}
-            source={pawStamp}
+          {/* Figma "발바닥 도장"(최종 모습). 누르기 전에는 보이지 않고, 애니메이션이 이 자리와 크기로 내려앉는다. */}
+          <Animated.View
+            pointerEvents="none"
             style={[
-              styles.stamp,
+              styles.decorativePawFrame,
               {
                 opacity: stampOpacity,
                 transform: [
@@ -258,8 +244,15 @@ export default function PledgeScreen() {
                 ],
               },
             ]}
-          />
-        </View>
+          >
+            <Icon
+              name="icon-paw-stamp"
+              size={111.437}
+              width={80.023}
+              height={73.389}
+            />
+          </Animated.View>
+        </Animated.View>
 
         <OnboardingPillButton
           title="약속했개!"
@@ -280,22 +273,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     flex: 1,
     width: 375,
-  },
-  stampLayer: {
-    alignSelf: "center",
-    bottom: 0,
-    position: "absolute",
-    top: 0,
-    width: 375,
-  },
-  stamp: {
-    aspectRatio: 1,
-    height: STAMP_SIZE,
-    left: STAMP_CENTER_X - STAMP_SIZE / 2,
-    position: "absolute",
-    resizeMode: "contain",
-    top: STAMP_CENTER_Y - STAMP_SIZE / 2,
-    width: STAMP_SIZE,
   },
   dogIconFrame: {
     height: 55,
