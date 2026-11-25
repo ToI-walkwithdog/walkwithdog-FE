@@ -26,6 +26,7 @@ import Ribbon12 from "../../assets/images/level-up-ribbon-12.svg";
 import Ribbon13 from "../../assets/images/level-up-ribbon-13.svg";
 import Ribbon24 from "../../assets/images/level-up-ribbon-24.svg";
 import Ribbon26 from "../../assets/images/level-up-ribbon-26.svg";
+import { getLevelUpEvent } from "../../api/walkResult";
 import { GradientView } from "../../components/GradientView";
 import { Screen } from "../../components/Screen";
 import { gradientLevelUpButton } from "../../theme/gradients";
@@ -149,6 +150,14 @@ export default function LevelUpScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
   const { height } = useWindowDimensions();
+  // 서버가 레벨업을 확인한 산책에서만 이 화면에 온다(6-2가 이벤트를 넘긴다). 없으면 홈으로 보낸다.
+  const event = getLevelUpEvent();
+
+  useEffect(() => {
+    if (!event) router.replace("/3");
+  }, [event, router]);
+
+  if (!event) return null;
 
   return (
     <Screen
@@ -180,7 +189,7 @@ export default function LevelUpScreen() {
             <Paw style={styles.paw} />
             <View style={styles.levelCopy}>
               <Text style={styles.levelText}>
-                {"Level UP!\n산책 레벨 4가 되었어요"}
+                {`Level UP!\n산책 레벨 ${event.after_level}이 되었어요`}
               </Text>
               <Text style={styles.levelSubtext}>
                 {"이제 더 많은 친구들과\n산책할 수 있어요!"}

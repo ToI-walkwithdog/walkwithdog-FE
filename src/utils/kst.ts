@@ -62,3 +62,14 @@ export function formatHomeDate(now: Date = new Date()): string {
   const kst = toKst(now);
   return `${WEEKDAYS[kst.getUTCDay()]}  ${MONTHS[kst.getUTCMonth()]} ${kst.getUTCDate()}, ${kst.getUTCFullYear()}`;
 }
+
+const KOREAN_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+// "2026.11.25 (수) 오후 5:44" (산책 기록 날짜 줄)
+export function formatWalkDateTime(iso: string): string {
+  const kst = toKst(iso);
+  const hour24 = kst.getUTCHours();
+  const period = hour24 < 12 ? "오전" : "오후";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${kst.getUTCFullYear()}.${two(kst.getUTCMonth() + 1)}.${two(kst.getUTCDate())} (${KOREAN_WEEKDAYS[kst.getUTCDay()]}) ${period} ${hour12}:${two(kst.getUTCMinutes())}`;
+}
