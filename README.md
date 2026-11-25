@@ -24,6 +24,8 @@ npm install
 npm run dev
 ```
 
+The dev server is pinned to `http://localhost:3000` (`strictPort`), because the backend's CORS allows only `http://localhost:3000` and `http://127.0.0.1:3000`. Copy `shelter-web/.env.example` to `shelter-web/.env.local` to set `VITE_API_BASE_URL` (default `http://localhost:8000`).
+
 Run `npm run build` in `shelter-web` to type-check and build the web project.
 
 Screen and backend handoff: [English](shelter-web/SCREEN_HANDOFF_EN.md) · [한국어](shelter-web/SCREEN_HANDOFF_KO.md).
