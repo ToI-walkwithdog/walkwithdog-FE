@@ -42,6 +42,17 @@ function describe(booking: MyWalkRequest): string {
   return MY_BOOKING_DESCRIPTIONS[booking.display_status];
 }
 
+// 페이지 사이에 목록이 바뀌면 같은 예약이 두 번 올 수 있다. 예약 ID로 한 번만 남긴다.
+function mergeById(current: MyWalkRequest[], incoming: MyWalkRequest[]): MyWalkRequest[] {
+  const seen = new Set(current.map((item) => item.id));
+  const added = incoming.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+  return [...current, ...added];
+}
+
 export function MyBookingsScreen(_: { state: MyBookingsScreenState }) {
   const router = useRouter();
   const [filter, setFilter] = useState<BookingFilter>("전체");
@@ -52,6 +63,8 @@ export function MyBookingsScreen(_: { state: MyBookingsScreenState }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const sequence = useRef(0);
+  // 다음 offset은 서버가 돌려준 원본 개수만큼 더한다. 중복을 뺀 목록 길이를 쓰지 않는다.
+  const nextOffset = useRef(0);
 
   // 필터를 바꾸거나 새로고침하면 첫 페이지부터 다시 불러온다. 늦게 온 응답은 버린다.
   const loadFirstPage = useCallback(
@@ -67,9 +80,10 @@ export function MyBookingsScreen(_: { state: MyBookingsScreenState }) {
       if (current !== sequence.current) return;
       setRefreshing(false);
       if (result.ok) {
-        setItems(result.data);
-        // 응답에 전체 개수가 없어서, 한 페이지가 가득 차면 더 있다고 본다.
-        setHasMore(result.data.length === MY_BOOKINGS_PAGE_SIZE);
+        setItems(mergeById([], result.data));
+        nextOffset.current = result.data.length;
+        // 전체 개수나 has_more가 없다. 요청한 limit보다 적게 오면 마지막 페이지다.
+        setHasMore(result.data.length >= MY_BOOKINGS_PAGE_SIZE);
         setFailure(null);
         setPhase("ready");
         return;
@@ -99,7 +113,7 @@ export function MyBookingsScreen(_: { state: MyBookingsScreenState }) {
     const result = await fetchMyWalkRequests({
       ...queryForFilter(filter),
       limit: MY_BOOKINGS_PAGE_SIZE,
-      offset: items.length,
+      offset: nextOffset.current,
     });
     setLoadingMore(false);
     if (current !== sequence.current) return;
@@ -108,8 +122,9 @@ export function MyBookingsScreen(_: { state: MyBookingsScreenState }) {
       return;
     }
     setFailure(null);
-    setItems((previous) => [...previous, ...result.data]);
-    setHasMore(result.data.length === MY_BOOKINGS_PAGE_SIZE);
+    nextOffset.current += result.data.length;
+    setItems((previous) => mergeById(previous, result.data));
+    setHasMore(result.data.length >= MY_BOOKINGS_PAGE_SIZE);
   };
 
   const noBookingsAtAll = phase === "ready" && items.length === 0 && filter === "전체";

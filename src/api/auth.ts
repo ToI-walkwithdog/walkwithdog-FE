@@ -94,5 +94,13 @@ export async function routeForFailure(
   ) {
     return routeFromServer();
   }
+  // detail이 문자열인 403에는 code가 없다. 문구를 읽지 않고, 나이 확인 대기 계정인지는
+  // GET /users/me의 계정 상태로만 판단한다. 그 밖의 403(남의 예약 등)은 현재 화면에서 안내한다.
+  if (failure.status === 403 && failure.code === null) {
+    const me = await fetchMe();
+    if (me.ok && me.data.next_onboarding_step === "AGE_REVIEW") {
+      return "/2-age-review";
+    }
+  }
   return null;
 }

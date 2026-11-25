@@ -64,7 +64,8 @@ export function BookingDetailScreen({
   const shelterName = detail.shelter?.name ?? detail.shelter_name ?? "";
   const completed = detail.display_status === "COMPLETED";
   const canEnterCode = detail.actions.can_enter_shelter_code;
-  const canCancel = detail.actions.can_cancel;
+  // 이미 취소된 예약에는 취소 버튼을 그리지 않는다(서버의 actions.can_cancel도 false다).
+  const canCancel = detail.actions.can_cancel && detail.status !== "CANCELLED";
 
   const title =
     state === "confirmed"

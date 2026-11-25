@@ -9,8 +9,9 @@ export type BookingFilter = "전체" | "승인 대기" | "확정" | "지난 예�
 
 export const BOOKING_FILTERS: BookingFilter[] = ["전체", "승인 대기", "확정", "지난 예약"];
 
-// status와 status_group은 함께 보내면 422이므로 필터마다 하나만 정한다.
-// status=APPROVED는 산책을 마친 예약도 포함하고(화면에서는 "산책 완료"), 지난 예약은 거절과 취소다.
+// status와 status_group은 함께 보내면 422이므로 필터마다 하나만 정한다. BE 담당자가 확인한 정책이다.
+// 전체는 필터 없음, 확정은 status=APPROVED(완료와 중단된 산책 포함, 화면에서는 display_status로 "산책 완료"),
+// 지난 예약은 status_group=PAST(거절과 취소만)다. 예약 상태와 산책 상태는 별개이고 tab=COMPLETED는 쓰지 않는다.
 export function queryForFilter(filter: BookingFilter): {
   status?: "PENDING" | "APPROVED";
   statusGroup?: "PAST";
