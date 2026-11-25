@@ -9,10 +9,15 @@
 // - 앱은 foreground에서만 수집한다. 서버가 새 좌표를 1시간 넘게 못 받으면 AUTO_TIMEOUT으로 끝낸다.
 //   만료 시각은 서버의 auto_end_at이 정하고 FE는 계산하지 않는다.
 // - 마커와 신고는 탭마다(신고는 한 건마다) 키를 만들고, 결과가 불확실하면 같은 키와 같은 본문으로 다시 보낸다.
-import * as Location from "expo-location";
 import { AppState } from "react-native";
 
 import type { ApiFailure, ApiResult } from "./client";
+import {
+  requestLocationPermission,
+  watchLocation,
+  type LocationSample,
+  type LocationWatch,
+} from "./locationSource";
 import { newUuid } from "./uuid";
 import { loadRawWalkRecord, type DetailMarker, type RawRoutePoint } from "./walkRoute";
 import { toNumber } from "../utils/walkFormat";
@@ -136,7 +141,7 @@ function initialState(): State {
 }
 
 let state = initialState();
-let subscription: Location.LocationSubscription | null = null;
+let subscription: LocationWatch | null = null;
 let uploadTimer: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: { remove: () => void } | null = null;
 let uploading = false;
@@ -300,7 +305,7 @@ async function seedRecordedData(walkId: number) {
   emit();
 }
 
-function onFix(location: Location.LocationObject) {
+function onFix(location: LocationSample) {
   if (state.walkId === null || state.paused) return;
   // 관측 시각은 기기가 위치를 얻은 실제 시각이다. 서버 시계에 맞춰 바꾸지 않는다.
   const atMs = location.timestamp;
@@ -394,17 +399,17 @@ export async function startLocation() {
   startTimers();
   if (state.paused || subscription) return;
   try {
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (!permission.granted) {
+    const granted = await requestLocationPermission();
+    if (!granted) {
       state.permission = "denied";
       emit();
       return;
     }
     state.permission = "granted";
     if (state.paused || subscription) return;
-    subscription = await Location.watchPositionAsync(
+    subscription = await watchLocation(
       // distanceInterval 0: 이동 거리로 관측을 거르지 않는다.
-      { accuracy: Location.Accuracy.High, timeInterval: SAMPLE_INTERVAL_MS, distanceInterval: 0 },
+      { accuracy: "high", timeInterval: SAMPLE_INTERVAL_MS, distanceInterval: 0 },
       onFix,
     );
   } catch {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import * as Location from "expo-location";
 import { Pressable, StyleSheet, Text } from "react-native";
 
+import { hasLocationPermission, watchLocation, type LocationWatch } from "../../api/locationSource";
 import { getTrackerSnapshot, subscribeTracker } from "../../api/walkTracker";
 import { buildRouteSegments, type RoutePoint } from "../../api/walkRoute";
 import { Icon } from "../../components/Icon";
@@ -38,12 +38,12 @@ export function WalkKakaoWebMapPanel({ appKey, onFail }: Props) {
 
   useEffect(() => {
     let active = true;
-    let subscription: Location.LocationSubscription | null = null;
+    let subscription: LocationWatch | null = null;
     (async () => {
-      const permission = await Location.getForegroundPermissionsAsync();
-      if (!active || permission.status !== "granted") return;
-      subscription = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, timeInterval: 2000, distanceInterval: 2 },
+      const granted = await hasLocationPermission();
+      if (!active || !granted) return;
+      subscription = await watchLocation(
+        { accuracy: "balanced", timeInterval: 2000, distanceInterval: 2 },
         (location) => {
           if (active) {
             setPosition({ latitude: location.coords.latitude, longitude: location.coords.longitude });

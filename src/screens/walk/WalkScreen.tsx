@@ -26,6 +26,7 @@ import {
   sendMarker,
   startLocation,
 } from "../../api/walkTracker";
+import { FAKE_GPS } from "../../api/locationSource";
 import { Icon } from "../../components/Icon";
 import { GradientView } from "../../components/GradientView";
 import { Screen } from "../../components/Screen";
@@ -343,6 +344,11 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
     >
       <View style={styles.root}>
         <View style={styles.contentFrame}>
+          {FAKE_GPS ? (
+            <View pointerEvents="none" style={styles.fakeGpsBanner}>
+              <Text style={styles.fakeGpsText}>가짜 GPS 사용 중 (개발용)</Text>
+            </View>
+          ) : null}
           <View style={styles.profileRow}>
             <View style={styles.profilePill}>
               {profileSource ? (
@@ -770,6 +776,21 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     flex: 1,
     width: 375,
+  },
+  fakeGpsBanner: {
+    alignSelf: "center",
+    backgroundColor: "#D32F2F",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    position: "absolute",
+    top: 0,
+    zIndex: 70,
+  },
+  fakeGpsText: {
+    color: colors.white,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: 10,
+    lineHeight: 14,
   },
   profileRow: {
     alignSelf: "center",
