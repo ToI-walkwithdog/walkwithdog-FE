@@ -1,6 +1,15 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
-import { Alert, Image, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Alert,
+  Animated,
+  Easing,
+  Image,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { fetchMe, routeFromServer } from "../../api/auth";
 import { errorMessage } from "../../api/errorMessages";
@@ -14,9 +23,96 @@ import { fontFamilies } from "../../theme/typography";
 
 const pawStamp = require("../../assets/images/paw-1.png");
 
+// 도장 효과. Figma 서약 화면의 "발바닥 도장"(111.4x111.4, 카드 오른쪽 아래) 자리에 찍는다.
+// 크기는 1:1 한 값만 쓴다(원본 paw-1.png가 512x512).
+const STAMP_SIZE = 104;
+const STAMP_CENTER_X = 304.7;
+const STAMP_CENTER_Y = 603.7;
+const STAMP_INK_OPACITY = 0.75;
+const STAMP_TILT = -8;
+const STAMP_DROP_MS = 340; // 1.8배에서 1.0배로 떨어진다(ease-in).
+const STAMP_HOLD_MS = 400; // 찍힌 뒤 잠시 머문다.
+const STAMP_FADE_OUT_MS = 200;
+const STAMP_REDUCED_FADE_MS = 400;
+
 export default function PledgeScreen() {
   const router = useRouter();
   const submittingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const reduceMotionRef = useRef(false);
+  const stampAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const [busy, setBusy] = useState(false);
+  const stampScale = useRef(new Animated.Value(1.8)).current;
+  const stampOpacity = useRef(new Animated.Value(0)).current;
+  const stampTilt = useRef(new Animated.Value(-14)).current;
+  const shakeX = useRef(new Animated.Value(0)).current;
+  const pressY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      reduceMotionRef.current = enabled;
+    });
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", (enabled) => {
+      reduceMotionRef.current = enabled;
+    });
+    return () => {
+      // 화면을 떠나면 애니메이션을 멈추고, 끝난 뒤 이동이나 상태 변경을 하지 않는다.
+      mountedRef.current = false;
+      stampAnimationRef.current?.stop();
+      subscription.remove();
+    };
+  }, []);
+
+  const timing = (value: Animated.Value, toValue: number, duration: number, easing = Easing.out(Easing.quad)) =>
+    Animated.timing(value, { toValue, duration, easing, useNativeDriver: true });
+
+  // 도장 애니메이션. 끝까지 재생되면 true, 중간에 멈추면(요청 실패, 화면 이탈) false.
+  const playStamp = (): Promise<boolean> => {
+    const reduced = reduceMotionRef.current;
+    stampScale.setValue(reduced ? 1 : 1.8);
+    stampTilt.setValue(reduced ? STAMP_TILT : -14);
+    stampOpacity.setValue(0);
+    shakeX.setValue(0);
+    pressY.setValue(0);
+
+    // "동작 줄이기" 설정이면 흔들림과 튕김 없이 도장이 서서히 나타나기만 한다.
+    const animation = reduced
+      ? Animated.sequence([timing(stampOpacity, STAMP_INK_OPACITY, STAMP_REDUCED_FADE_MS), Animated.delay(STAMP_HOLD_MS)])
+      : Animated.sequence([
+          Animated.parallel([
+            timing(stampScale, 1, STAMP_DROP_MS, Easing.in(Easing.cubic)),
+            timing(stampTilt, STAMP_TILT, STAMP_DROP_MS, Easing.in(Easing.cubic)),
+            timing(stampOpacity, STAMP_INK_OPACITY, 220),
+          ]),
+          // 닿는 순간: 도장이 살짝 눌렸다 튕기고, 카드가 눌리며 화면이 짧게 흔들린다.
+          Animated.parallel([
+            Animated.sequence([
+              timing(stampScale, 0.93, 70),
+              Animated.spring(stampScale, { toValue: 1, friction: 4, tension: 180, useNativeDriver: true }),
+            ]),
+            Animated.sequence([
+              timing(shakeX, -5, 40),
+              timing(shakeX, 5, 50),
+              timing(shakeX, -3, 50),
+              timing(shakeX, 2, 50),
+              timing(shakeX, 0, 50),
+            ]),
+            Animated.sequence([timing(pressY, 4, 60), timing(pressY, 0, 240)]),
+          ]),
+          Animated.delay(STAMP_HOLD_MS),
+        ]);
+    stampAnimationRef.current = animation;
+    return new Promise((resolve) => animation.start(({ finished }) => resolve(finished)));
+  };
+
+  const fadeOutStamp = () =>
+    new Promise<void>((resolve) => {
+      stampAnimationRef.current?.stop();
+      shakeX.setValue(0);
+      pressY.setValue(0);
+      timing(stampOpacity, 0, STAMP_FADE_OUT_MS).start(() => resolve());
+    });
 
   const handleFailure = async (status: number, code: string | null) => {
     if (status === 401) {
@@ -29,28 +125,38 @@ export default function PledgeScreen() {
     }
   };
 
+  // 서약 요청. 성공이면 null, 실패면 실패를 화면에 알리는 함수를 돌려준다(도장을 걷은 뒤 실행한다).
+  const requestPledge = async (): Promise<null | (() => Promise<void>)> => {
+    const me = await fetchMe();
+    if (!me.ok) return () => handleFailure(me.status, me.code);
+    if (!me.data.current_pledge_version) {
+      return async () => Alert.alert("알림", errorMessage(null));
+    }
+    const res = await savePledge(me.data.current_pledge_version);
+    // PLEDGE_VERSION_MISMATCH, PLEDGE_NOT_ALLOWED 등
+    return res.ok ? null : () => handleFailure(res.status, res.code);
+  };
+
+  // 도장 애니메이션과 서약 요청을 함께 시작하고, 둘 다 끝나야 다음 화면으로 간다.
   const submitPledge = async () => {
     if (submittingRef.current) return;
     submittingRef.current = true;
+    setBusy(true);
     try {
-      const me = await fetchMe();
-      if (!me.ok) {
-        await handleFailure(me.status, me.code);
+      const stamp = playStamp();
+      const failure = await requestPledge();
+      if (!mountedRef.current) return;
+      if (failure) {
+        await fadeOutStamp();
+        if (!mountedRef.current) return;
+        await failure();
         return;
       }
-      if (!me.data.current_pledge_version) {
-        Alert.alert("알림", errorMessage(null));
-        return;
-      }
-      const res = await savePledge(me.data.current_pledge_version);
-      if (res.ok) {
-        router.replace("/2-1");
-      } else {
-        // PLEDGE_VERSION_MISMATCH, PLEDGE_NOT_ALLOWED 등
-        await handleFailure(res.status, res.code);
-      }
+      const played = await stamp;
+      if (played && mountedRef.current) router.replace("/2-1");
     } finally {
       submittingRef.current = false;
+      if (mountedRef.current) setBusy(false);
     }
   };
 
@@ -63,7 +169,9 @@ export default function PledgeScreen() {
       <View style={styles.root}>
         <OnboardingBackground />
 
-        <View style={styles.contentFrame}>
+        <Animated.View
+          style={[styles.contentFrame, { transform: [{ translateX: shakeX }, { translateY: pressY }] }]}
+        >
           <View style={styles.dogIconFrame}>
             <View style={styles.dogIconImage}>
               <Icon
@@ -134,10 +242,28 @@ export default function PledgeScreen() {
               height={73.389}
             />
           </View>
+        </Animated.View>
+
+        <View pointerEvents="none" style={styles.stampLayer}>
+          <Animated.Image
+            accessible={false}
+            source={pawStamp}
+            style={[
+              styles.stamp,
+              {
+                opacity: stampOpacity,
+                transform: [
+                  { rotate: stampTilt.interpolate({ inputRange: [-360, 360], outputRange: ["-360deg", "360deg"] }) },
+                  { scale: stampScale },
+                ],
+              },
+            ]}
+          />
         </View>
 
         <OnboardingPillButton
           title="약속했개!"
+          disabled={busy}
           onPress={submitPledge}
         />
       </View>
@@ -154,6 +280,22 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     flex: 1,
     width: 375,
+  },
+  stampLayer: {
+    alignSelf: "center",
+    bottom: 0,
+    position: "absolute",
+    top: 0,
+    width: 375,
+  },
+  stamp: {
+    aspectRatio: 1,
+    height: STAMP_SIZE,
+    left: STAMP_CENTER_X - STAMP_SIZE / 2,
+    position: "absolute",
+    resizeMode: "contain",
+    top: STAMP_CENTER_Y - STAMP_SIZE / 2,
+    width: STAMP_SIZE,
   },
   dogIconFrame: {
     height: 55,

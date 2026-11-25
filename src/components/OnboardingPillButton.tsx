@@ -6,17 +6,21 @@ import { fontFamilies } from "../theme/typography";
 type OnboardingPillButtonProps = {
   title: string;
   onPress: () => void;
+  disabled?: boolean;
 };
 
 export function OnboardingPillButton({
   title,
   onPress,
+  disabled = false,
 }: OnboardingPillButtonProps) {
   return (
     <View style={styles.frame}>
       <Pressable
         accessibilityLabel={title}
         accessibilityRole="button"
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         onPress={onPress}
         style={styles.button}
       >
