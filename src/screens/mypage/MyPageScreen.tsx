@@ -1,14 +1,19 @@
-import type { ReactNode } from "react";
-import { useRouter } from "expo-router";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { Alert, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
+import { fetchMe, routeForFailure, type Me } from "../../api/auth";
+import type { ApiFailure } from "../../api/client";
+import { errorMessage } from "../../api/errorMessages";
+import { fetchVolunteerMe, type VolunteerMe } from "../../api/volunteers";
 import { Icon, type IconName } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
 import { GradientView } from "../../components/GradientView";
-import { useMockSession } from "../../context/MockSession";
 import { gradientMyPageBadge, gradientMyPageSummary } from "../../theme/gradients";
 import { colors, shadows } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
+import { formatKm } from "../../utils/walkFormat";
+import { confirmLogout } from "./logout";
 
 type MenuRow = {
   label: string;
@@ -50,29 +55,70 @@ function MenuCard({ rows, footer }: { rows: MenuRow[]; footer?: ReactNode }) {
 
 export default function MyPageScreen() {
   const router = useRouter();
-  const { profile, records, resetSession } = useMockSession();
-  const distance = records.reduce((sum, record) => sum + record.distanceMeters, 0) / 1000;
+  const [me, setMe] = useState<Me | null>(null);
+  const [stats, setStats] = useState<VolunteerMe | null>(null);
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const sequence = useRef(0);
+
+  // 닉네임(GET /users/me)과 통계, 레벨(GET /volunteers/me)을 불러온다. 늦게 온 응답은 버린다.
+  const load = useCallback(
+    async (mode: "initial" | "refresh") => {
+      const current = ++sequence.current;
+      if (mode === "refresh") setRefreshing(true);
+      const [meResult, statsResult] = await Promise.all([fetchMe(), fetchVolunteerMe()]);
+      if (current !== sequence.current) return;
+      setRefreshing(false);
+      const failed = !meResult.ok ? meResult : !statsResult.ok ? statsResult : null;
+      if (failed) {
+        const target = await routeForFailure(failed);
+        if (target) {
+          router.replace(target);
+          return;
+        }
+        setFailure(failed);
+      } else {
+        setFailure(null);
+      }
+      if (meResult.ok) setMe(meResult.data);
+      if (statsResult.ok) setStats(statsResult.data);
+    },
+    [router],
+  );
+
+  // 내 정보 수정에서 돌아오면 닉네임이 바뀌었을 수 있으니 다시 불러온다.
+  useFocusEffect(
+    useCallback(() => {
+      void load("initial");
+      return () => {
+        sequence.current += 1;
+      };
+    }, [load]),
+  );
+
+  // 통계는 종료한 모든 산책(history_*) 기준이다. 9-1 목록과 같은 범위라 숫자를 맞춰 볼 수 있다.
+  const walkCount = stats ? `${stats.history_walk_count}회` : "-";
+  const distanceText = stats ? `${formatKm(stats.history_distance_m)} km` : "-";
+  const dogCount = stats ? `${stats.history_unique_dog_count}마리` : "-";
+  const distanceIncomplete = stats ? !stats.history_distance_is_complete : false;
 
   const comingSoon = (title: string) => () =>
     Alert.alert(title, "아직 준비 중인 기능이에요.");
 
-  const logout = () =>
-    Alert.alert("로그아웃", "앱에 임시 저장된 목업 데이터가 초기화돼요.", [
-      { text: "취소", style: "cancel" },
-      {
-        text: "로그아웃",
-        onPress: () => {
-          resetSession();
-          router.dismissAll();
-          router.replace("/1-2");
-        },
-      },
-    ]);
+  const logout = () => confirmLogout(router, setLoggingOut);
 
   return (
     <Screen
       backgroundColor={colors.white}
       contentContainerStyle={styles.scrollContent}
+      refreshControl={
+        <RefreshControl
+          onRefresh={() => void load("refresh")}
+          refreshing={refreshing}
+          tintColor={colors.brown2}
+        />
+      }
       scroll
       safeAreaEdges={[]}
       testID="screen-10-1"
@@ -90,35 +136,46 @@ export default function MyPageScreen() {
       </View>
 
       <View style={styles.profile}>
-        <Text style={styles.profileName}>{profile.nickname} 님</Text>
+        <Text style={styles.profileName}>{me ? `${me.nickname} 님` : "-"}</Text>
         <View style={styles.levelBadge}>
           <Icon name="icon-shield" size={16} width={16} height={16} color={colors.brown3} />
-          <Text style={styles.levelText}>산책 레벨 3</Text>
+          <Text style={styles.levelText}>{stats ? `산책 레벨 ${stats.level}` : "산책 레벨"}</Text>
         </View>
       </View>
+
+      {failure ? (
+        <Pressable
+          accessibilityLabel="다시 시도"
+          accessibilityRole="button"
+          onPress={() => void load("initial")}
+          style={styles.errorRow}
+        >
+          <Text style={styles.errorText}>{errorMessage(failure.code)} 눌러서 다시 시도해요</Text>
+        </Pressable>
+      ) : null}
 
       <GradientView token={gradientMyPageSummary} style={styles.summaryCard}>
         {/* 각 열은 위 줄(아이콘 + 값, 세로 가운데 정렬)과 아래 줄(라벨)이며 둘 다 열 왼쪽에 붙는다. */}
         <View style={[styles.stat, styles.statWalks]}>
           <View style={styles.statValueRow}>
             <Icon name="icon-dog" size={20} width={20} height={20} color={colors.deepOrange} />
-            <Text style={styles.statValue}>{records.length}회</Text>
+            <Text style={styles.statValue}>{walkCount}</Text>
           </View>
           <Text style={styles.statLabel}>총 산책</Text>
         </View>
         <View style={[styles.stat, styles.statDistance]}>
           <View style={styles.statValueRow}>
             <Icon name="icon-footprints" size={24} width={24} height={24} color={colors.deepOrange} />
-            <Text style={styles.statValue}>{distance.toFixed(1)} km</Text>
+            <Text style={styles.statValue}>{distanceText}</Text>
           </View>
-          <Text style={styles.statLabel}>총 거리</Text>
+          <Text style={styles.statLabel}>
+            {distanceIncomplete ? "총 거리 · 일부 미확인" : "총 거리"}
+          </Text>
         </View>
         <View style={[styles.stat, styles.statDogs]}>
           <View style={styles.statValueRow}>
             <Icon name="icon-pets" size={18} width={18} height={18} color={colors.deepOrange} />
-            <Text style={styles.statValue}>
-              {new Set(records.map((record) => record.dogId)).size}마리
-            </Text>
+            <Text style={styles.statValue}>{dogCount}</Text>
           </View>
           <Text style={styles.statLabel}>함께한 강아지</Text>
         </View>
@@ -181,10 +238,12 @@ export default function MyPageScreen() {
             <Pressable
               accessibilityLabel="로그아웃"
               accessibilityRole="button"
+              accessibilityState={{ disabled: loggingOut }}
+              disabled={loggingOut}
               onPress={logout}
               style={styles.logoutRow}
             >
-              <Text style={styles.logoutText}>로그아웃</Text>
+              <Text style={styles.logoutText}>{loggingOut ? "로그아웃하는 중..." : "로그아웃"}</Text>
             </Pressable>
           }
         />
@@ -194,6 +253,17 @@ export default function MyPageScreen() {
 }
 
 const styles = StyleSheet.create({
+  errorRow: {
+    alignSelf: "center",
+    marginBottom: 8,
+    width: 335,
+  },
+  errorText: {
+    color: colors.brown2,
+    fontFamily: fontFamilies.nanumSquareRoundRegular,
+    fontSize: 12,
+    textAlign: "center",
+  },
   scrollContent: { paddingBottom: 30 },
   header: {
     alignSelf: "center",

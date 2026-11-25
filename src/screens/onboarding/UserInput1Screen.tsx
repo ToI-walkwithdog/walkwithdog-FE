@@ -20,7 +20,6 @@ import {
 import { OnboardingStepNavigation } from "../../components/OnboardingStepNavigation";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
-import { useMockSession } from "../../context/MockSession";
 import { UserInfoBackground } from "../../components/UserInfoBackground";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
@@ -31,7 +30,6 @@ type Validation = { field: ValidationField; text: string | null } | null;
 
 export default function UserInput1Screen() {
   const router = useRouter();
-  const { profile, updateProfile } = useMockSession();
   const [name, setName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [phone, setPhone] = useState("");
@@ -153,7 +151,6 @@ export default function UserInput1Screen() {
       });
       if (res.ok) {
         setValidation(null);
-        updateProfile({ ...profile, name: name.trim(), phone });
         router.push(routeForStep(res.data.next_step) ?? "/2-3");
         return;
       }

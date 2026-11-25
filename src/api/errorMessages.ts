@@ -109,6 +109,19 @@ const MESSAGES: Record<string, string> = {
   WALK_START_ALREADY_STARTED: "이미 산책 중이에요.",
   WALK_START_RETRYABLE: RETRY_LATER,
 
+  // 10-x 마이페이지: 내 정보, 산책 선호
+  PROFILE_VERSION_MISMATCH: "다른 곳에서 정보가 바뀌었어요. 최신 내용을 확인해 주세요.",
+  PROFILE_UPDATE_NOT_ALLOWED: "이 계정은 정보를 수정할 수 없어요.",
+  PROFILE_BASIC_INFO_REQUIRED: "기본 정보를 먼저 입력한 뒤에 이름과 번호를 바꿀 수 있어요.",
+  INVALID_PROFILE_PAYLOAD: "수정할 내용을 확인해 주세요.",
+  NICKNAME_REQUIRED: "닉네임을 입력해 주세요.",
+  REQUIRED_FIELD: "입력하지 않은 항목이 있어요.",
+  INVALID_VERIFICATION_PAYLOAD: "인증번호 6자리를 입력해 주세요.",
+  PREFERENCE_VERSION_MISMATCH: "다른 곳에서 선호 설정이 바뀌었어요. 최신 내용을 확인해 주세요.",
+  PREFERENCE_NOT_ALLOWED: "이 계정은 선호를 설정할 수 없어요.",
+  INVALID_PREFERENCE_PAYLOAD: "선호 설정 값을 확인해 주세요.",
+  INVALID_DURATION: "산책 시간을 확인해 주세요.",
+
   // 5-x 산책 중
   MARKER_LOCATION_UNAVAILABLE: "위치를 확인할 수 없어 저장하지 못했어요. 잠시 후 다시 눌러 주세요.",
   DUPLICATE_RECENT: "방금 같은 유형의 신고를 보냈어요.",

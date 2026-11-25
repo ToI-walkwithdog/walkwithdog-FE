@@ -137,3 +137,53 @@
 - 이전 봉사 기록 합계(`total_walk_count`, `total_distance_m`, `unique_dog_count`)는 화면에 쓰지 않는다.
 - 레벨 반영 산책 수를 `total_walk_count`나 `history_walk_count`로 추정하지 않는다. 레벨은 서버의 평가 결과만 따른다.
 - 기기 확인: 9-1 카드는 위 필드로 바꿨고 아직 기기에서 확인하지 않았다. 10-1은 9단계에서 같은 필드로 연결한다.
+
+## 9단계 마이페이지, 내 정보 수정, 선호, 로그아웃 (10-1~10-3, 설정)
+
+구현했고 타입 검사만 통과했다. 기기에서는 아직 아무것도 확인하지 않았다.
+`MockSession`과 `src/data/*`는 더 이상 쓰는 곳이 없어 삭제했다.
+
+### 기기에서 확인함
+- 없음
+
+### 미확인
+- 10-1 마이페이지: 닉네임(`GET /users/me`), 통계 카드(`history_walk_count`, `history_distance_m`, `history_unique_dog_count`), 레벨(`level`),
+  거리 일부 미확인 표시(`history_distance_is_complete`가 false일 때), 로딩, 오류와 다시 시도, 당겨서 새로고침, 내 정보 수정에서 돌아오면 닉네임 갱신
+- 10-2 내 정보 수정: 프로필 불러오기, 닉네임 변경 저장, 이름 변경 저장(온보딩 Step 1을 마친 계정), 바뀐 필드만 전송, 저장 응답 뒤에 화면 닫기
+- 10-2 번호 변경 전 과정: 새 번호 입력, 인증 요청(`/users/me/profile/phone-verifications`), 인증번호 확인, 저장(`phone_number` + `phone_verification_id`)
+- 10-2 번호 변경 오류: 다른 계정이 쓰는 번호(409 `PHONE_ALREADY_REGISTERED`), 인증 없이 저장(409 `PHONE_VERIFICATION_REQUIRED`),
+  틀린 인증번호(422 `VERIFICATION_CODE_INVALID`), 만료(410), 15분이 지난 인증, 닉네임 중복(409 `NICKNAME_ALREADY_EXISTS`)
+- 10-2 버전 충돌(409 `PROFILE_VERSION_MISMATCH`): 최신 프로필을 보여 주고 "서버 값 보기 / 내 입력으로 저장 / 닫기"를 고르게 하는지(조용히 덮어쓰지 않는다)
+- 10-3 산책 선호: 불러오기(저장값 없으면 온보딩 값), 저장, 버전 충돌(409 `PREFERENCE_VERSION_MISMATCH`)과 선택 화면, 저장 응답 뒤에 화면 닫기
+- 설정 화면: "목업" 문구가 없는지, 로그아웃 행
+- 로그아웃(마이페이지와 설정): 서버 호출 뒤 토큰과 로컬 상태 삭제, 로그인 화면 이동, 같은 계정으로 다시 로그인했을 때 이전 상태(산책, 예약, 이력, 임시 입력)가 남지 않는지
+- 로그아웃 중 서버에 닿지 않을 때(비행기 모드): 이 기기에서만 로그아웃했다는 안내 뒤에도 로컬 상태가 지워지는지
+- 산책 중 로그아웃 시도가 막히는지
+- 본 레벨업 기록(`levelUpSeen`)이 로그아웃 뒤에도 계정별로 남는지
+
+### 통계 매핑 적용
+10-1은 위 "통계 필드 매핑(확정)"과 같다: 총 산책 `history_walk_count`, 총 거리 `history_distance_m`(미확인 표시 포함),
+함께한 강아지 `history_unique_dog_count`, 레벨 `level`. `total_*`와 `total_duration_seconds`는 쓰지 않는다.
+
+### 테스트 데이터 준비
+현재 로컬 DB: 봉사자 `snsns`(닉네임 `eksks`, 번호 010-0000-0001, 프로필 버전 1), 보호소 `shelter01`. 산책 선호는 아직 저장된 행이 없다(버전 0).
+번호는 합성 번호 010-0000-0000~9999만 쓸 수 있고, 로컬 BE의 고정 인증번호는 `123456`이다(`SMS_MOCK_FIXED_CODE`).
+
+1. 번호 변경 성공: 새 번호 `010-0000-0002`로 변경한다(인증번호 `123456`). 변경 뒤 10-2에 새 번호가 보이고 프로필 버전이 올라가야 한다.
+2. 다른 계정 번호 409(`PHONE_ALREADY_REGISTERED`): 두 번째 봉사자 계정이 번호 `010-0000-0003`을 갖게 만든 뒤, 첫 번째 계정에서
+   `010-0000-0003`으로 인증을 받고 저장한다. 인증 요청과 확인은 통과하고 저장에서 409가 나와야 한다(`#110` 정책).
+   두 번째 계정 만들기(Swagger, 모두 이 앱의 가입·온보딩과 같은 API):
+   - `POST /users/` `{"login_id":"second01","nickname":"second_user","password":"<15자 이상, 대소문자·숫자·특수문자 포함>",
+     "privacy":{"document_version":"privacy-test-v1","age_14_plus_confirmed":true,"collection_use_agreed":true,"ai_overseas_transfer_agreed":false}}`
+   - `POST /auth/login` `{"identifier":"second01","password":"..."}` 로 토큰을 받아 Authorize에 넣는다.
+   - `PUT /users/me/pledge` `{"pledge_version":"pledge-local-v1"}`
+   - `POST /users/me/phone-verifications` `{"phone_number":"010-0000-0003"}` → 응답의 `verification_id`
+   - `POST /users/me/phone-verifications/confirm` `{"verification_id":"<위 값>","code":"123456"}`
+   - `PUT /users/me/onboarding/basic-info` `{"full_name":"홍길동","birth_date":"1995-05-05","phone_verification_id":"<위 값>"}`
+   위 본문은 FE 코드와 BE 스키마를 읽어 정리한 것이며 실제로 호출해 확인하지는 않았다. 정책 변수가 다르면 `PRIVACY_DOCUMENT_VERSION`, `PLEDGE_CURRENT_VERSION`을 BE `.env`에서 확인한다.
+3. 프로필 버전 충돌: 앱에서 10-2를 연 채로, Swagger에서 첫 번째 계정(`snsns`) 토큰으로 `GET /users/me/profile`을 읽어 `profile_version`을 확인한 뒤
+   `PATCH /users/me/profile` `{"expected_profile_version":<현재 값>,"nickname":"conflict_nick"}`을 한 번 보낸다. 앱에서 다른 값을 고쳐 저장하면 409가 나와야 한다.
+4. 선호 버전 충돌: 앱에서 10-3을 연 채로 Swagger에서 `PATCH /users/me/walk-preferences` `{"expected_version":0,"duration_code":"OVER_60_MIN"}`을 한 번 보낸다
+   (저장된 행이 없어 버전 0이다). 앱에서 저장하면 409가 나와야 한다.
+5. 닉네임 중복: 앱에서 10-2 닉네임을 `second_user`(두 번째 계정)로 바꿔 저장하면 409(`NICKNAME_ALREADY_EXISTS`)가 나와야 한다.
+

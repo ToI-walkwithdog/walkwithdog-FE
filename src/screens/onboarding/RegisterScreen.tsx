@@ -30,7 +30,6 @@ import { Icon } from "../../components/Icon";
 import { OnboardingPillButton } from "../../components/OnboardingPillButton";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
-import { useMockSession } from "../../context/MockSession";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
@@ -40,7 +39,6 @@ const NICKNAME_DUPLICATE_MESSAGE = "*중복입니다. 다른 닉네임을 사용
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { profile, updateProfile } = useMockSession();
   const [nickname, setNickname] = useState("");
   const [nicknameChecked, setNicknameChecked] = useState(false);
   const [nicknameAvailable, setNicknameAvailable] = useState(false);
@@ -174,7 +172,6 @@ export default function RegisterScreen() {
         return;
       }
 
-      updateProfile({ ...profile, nickname: nickname.trim() });
       router.push("/1-6");
     } finally {
       submittingRef.current = false;

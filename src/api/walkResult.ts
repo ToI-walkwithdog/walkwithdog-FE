@@ -211,6 +211,10 @@ export function markLevelPending(walkId: number) {
   pendingLevelWalks.add(walkId);
 }
 
+export function clearPendingLevelWalks() {
+  pendingLevelWalks.clear();
+}
+
 // 나중에 다시 확인한다. 평가가 끝났고 아직 보지 않은 레벨업이 있으면 6-3이 쓸 이벤트를 준비하고 true를 돌려준다.
 export async function checkPendingLevelUps(): Promise<boolean> {
   for (const walkId of [...pendingLevelWalks]) {
