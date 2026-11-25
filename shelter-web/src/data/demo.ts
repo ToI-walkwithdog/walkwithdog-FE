@@ -51,13 +51,7 @@ export type DemoWalk = {
   evaluation: string;
 };
 
-export type DemoShelter = { name: string; area: string; phone: string };
 
-export const initialShelter: DemoShelter = {
-  name: "행복 보호소",
-  area: "서울 성북구",
-  phone: "",
-};
 
 export const initialDogs: DemoDog[] = [
   { id: "kongi", name: "콩이", breed: "믹스견", age: 3, size: "소형견", difficulty: 3.5, notes: "활동량이 많아요.", photo: null, active: true },

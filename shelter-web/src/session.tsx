@@ -82,3 +82,10 @@ export function useSession() {
   if (!context) throw new Error("SessionProvider is missing.");
   return context;
 }
+
+// 로그인한 계정의 담당 보호소 ID. 개발용 미리보기(로그인 없음)이면 null이다.
+export function useShelterId(): string | null {
+  const { state } = useSession();
+  if (state.status !== "in" || !state.me || state.me.shelter_id === null) return null;
+  return String(state.me.shelter_id);
+}

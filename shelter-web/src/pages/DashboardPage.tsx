@@ -1,5 +1,7 @@
 import { useDemo } from "../DemoContext";
-import { useSession } from "../session";
+import { fetchShelter } from "../api/shelters";
+import { useLoad } from "../hooks";
+import { useSession, useShelterId } from "../session";
 
 const menuItems = [
   { title: "강아지 관리", description: "보호견 정보와 사진", href: "#dogs" },
@@ -13,7 +15,8 @@ const menuItems = [
 
 export function DashboardPage() {
   const { signOut } = useSession();
-  const { shelter, dogs, schedules, bookings, reports } = useDemo();
+  const { dogs, schedules, bookings, reports } = useDemo();
+  const shelterId = useShelterId();
   const pending = bookings.filter((booking) => booking.status === "pending");
   const unreadReports = reports.filter((report) => report.kind === "incoming" && !report.reviewed);
   return (
@@ -33,8 +36,7 @@ export function DashboardPage() {
         <div className="dashboard-intro">
           <div>
             <span className="eyebrow">SHELTER DASHBOARD</span>
-            <h1>{shelter.name}님,<br />안녕하세요.</h1>
-            <p>{shelter.area} · 보호소 운영 현황</p>
+            {shelterId === null ? <ShelterHeading name={null} area={null} /> : <ConnectedHeading shelterId={shelterId} />}
           </div>
           <span className="preview-badge">미리보기</span>
         </div>
@@ -113,5 +115,22 @@ export function DashboardPage() {
       </main>
       <footer className="dashboard-footer">이어주개 보호소 서비스 · 미리보기</footer>
     </div>
+  );
+}
+
+// 이름과 주소만 서버에서 가져온다. 실패해도 대시보드의 나머지는 그대로 보여 준다.
+function ConnectedHeading({ shelterId }: { shelterId: string }) {
+  const { state } = useLoad(() => fetchShelter(shelterId), [shelterId]);
+  return state.status === "ok"
+    ? <ShelterHeading name={state.data.name} area={state.data.address} />
+    : <ShelterHeading name={null} area={null} />;
+}
+
+function ShelterHeading({ name, area }: { name: string | null; area: string | null }) {
+  return (
+    <>
+      <h1>{name ?? "보호소"}님,<br />안녕하세요.</h1>
+      <p>{area ? `${area} · ` : ""}보호소 운영 현황</p>
+    </>
   );
 }
