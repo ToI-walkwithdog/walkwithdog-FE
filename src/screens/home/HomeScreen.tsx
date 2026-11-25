@@ -17,6 +17,7 @@ import { Screen } from "../../components/Screen";
 import { fetchMe, routeForOnboarding } from "../../api/auth";
 import { HOME_STATUS_LABELS } from "../../api/bookingCodes";
 import { setStartableRequest } from "../../api/bookingDraft";
+import { getTrackerSnapshot } from "../../api/walkTracker";
 import { errorMessage } from "../../api/errorMessages";
 import { fetchMyWalkRequests, type MyWalkRequest } from "../../api/walkRequests";
 import {
@@ -94,6 +95,12 @@ export default function HomeScreen() {
       const target = routeForOnboarding(me.data);
       if (target && target !== "/3") {
         router.replace(target);
+        return;
+      }
+      // 산책 중에 로그인이 끊겼다면 트래커에 그 산책과 보내지 못한 좌표가 남아 있다.
+      // 다시 로그인한 뒤 같은 산책으로 돌아가 서버 상태를 확인하고 이어 간다.
+      if (getTrackerSnapshot().walkId !== null) {
+        router.replace("/5-1");
         return;
       }
       setNickname(me.data.nickname);

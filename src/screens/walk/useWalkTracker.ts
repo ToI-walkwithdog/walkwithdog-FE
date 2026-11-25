@@ -25,15 +25,12 @@ export function useWalkTracker() {
     return () => clearInterval(id);
   }, []);
 
-  // 서버 시각 기준 경과 시간에서 일시정지한 시간을 뺀다(정지 중에는 시간이 멈춘 것으로 보여 준다).
-  const pausedNowMs = snapshot.paused && snapshot.pausedAt !== null ? now - snapshot.pausedAt : 0;
+  // 서버 시각 기준 경과 시간이다. 일시정지는 GPS 수집만 멈추는 것이라 시간은 멈추지 않고,
+  // 정지한 시간을 빼지도 않는다. 종료 뒤에는 서버가 확정한 duration_seconds를 쓴다.
   const elapsedMs =
     snapshot.walkId === null
       ? 0
-      : Math.max(
-          0,
-          now + snapshot.clockOffsetMs - snapshot.startedAtMs - snapshot.pausedTotalMs - pausedNowMs,
-        );
+      : Math.max(0, now + snapshot.clockOffsetMs - snapshot.startedAtMs);
   const distanceKm = snapshot.distanceM / 1000;
   const speedKmh = elapsedMs > 0 ? distanceKm / (elapsedMs / 3_600_000) : 0;
 

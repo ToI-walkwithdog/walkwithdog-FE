@@ -16,13 +16,12 @@ import { errorMessage } from "../../api/errorMessages";
 import { fetchWalkRequestDetail } from "../../api/walkRequests";
 import { incidentTypeForLabel, MARKER_ITEMS } from "../../api/walkCodes";
 import { getWalkContext, setWalkContext, type WalkContext } from "../../api/walkSession";
-import { fetchActiveWalk } from "../../api/walks";
 import {
-  attachWalk,
   discardWalk,
   GPS_LOST_AFTER_MS,
   pauseTracking,
   prepareIncident,
+  recoverWalk,
   resumeTracking,
   sendMarker,
   startLocation,
@@ -51,13 +50,12 @@ const KakaoWalkMap = lazy(() =>
   })),
 );
 
-export type WalkState =
-  | "active"
-  | "paused"
-  | "ended"
-  | "plusMenu"
-  | "markerSelected"
-  | "report"
+// 라우트가 처음 보여 줄 모습이다(5-1 active, 5-2 paused, 5-4 plusMenu, 5-5 report).
+// 화면 안에서는 기록 상태(recordingState)와 메뉴 상태(overlayState)를 따로 둔다.
+export type WalkState = "active" | "paused" | "plusMenu" | "report";
+
+// 메뉴나 시트를 열고 닫는 것만 나타낸다. 열고 닫아도 GPS 기록은 멈추거나 다시 시작되지 않는다.
+type OverlayState = "none" | "plusMenu" | "report";
 
 type WalkScreenProps = {
   initialState?: WalkState;
@@ -83,7 +81,10 @@ const plusItems = [
 export default function WalkScreen({ initialState = "active" }: WalkScreenProps) {
   const router = useRouter();
   const { closeReport } = useLocalSearchParams<{ closeReport?: string }>();
-  const [state, setState] = useState<WalkState>(initialState);
+  // overlayState: 메뉴와 시트. recordingState(기록 중/정지)는 트래커의 snapshot.paused가 유일한 출처다.
+  const [overlay, setOverlay] = useState<OverlayState>(
+    initialState === "plusMenu" || initialState === "report" ? initialState : "none",
+  );
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [loadFailure, setLoadFailure] = useState<ApiFailure | null>(null);
   const [context, setContext] = useState<WalkContext | null>(getWalkContext());
@@ -95,40 +96,41 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
   const reportBusyRef = useRef(false);
   const mountedAt = useRef(Date.now());
   const gpsLostShown = useRef(false);
+  const endedHandled = useRef(false);
   const { snapshot, now, stats: walkStats } = useWalkTracker();
 
-  // 서버의 진행 중인 산책을 불러와 이어 받는다. 앱을 다시 열었을 때도 같은 경로로 복구한다.
+  // 서버의 진행 중인 산책을 불러와 이어 받는다. 앱을 다시 열었을 때도 같은 경로(recoverWalk)로 복구한다.
   const loadWalk = useCallback(async () => {
     setPhase("loading");
-    const active = await fetchActiveWalk();
-    if (!active.ok) {
-      const route = await routeForFailure(active);
-      if (route) {
-        router.replace(route);
+    const result = await recoverWalk();
+    switch (result.kind) {
+      case "auth":
+        router.replace("/1-2");
         return;
-      }
-      if (active.status === 404) {
-        // 진행 중인 산책이 없다(이미 종료됨). 코드가 아니라 HTTP 상태로 나눈다.
+      case "ended":
+        // 서버에서 이미 끝난 산책이다. 안내와 이동은 아래 snapshot.ended 효과가 맡는다.
+        return;
+      case "none":
         discardWalk();
         Alert.alert("알림", "진행 중인 산책이 없어요.", [
           { text: "확인", onPress: () => router.replace("/3") },
         ]);
         return;
-      }
-      setLoadFailure(active);
-      setPhase("error");
-      return;
+      case "error":
+        setLoadFailure(result.failure);
+        setPhase("error");
+        return;
     }
-    attachWalk(active.data);
+    const active = result.active;
     void startLocation();
     if (initialState === "paused") pauseTracking();
     setPhase("ready");
     const cached = getWalkContext();
-    if (cached && cached.walkRequestId === active.data.walk_request_id) {
+    if (cached && cached.walkRequestId === active.walk_request_id) {
       setContext(cached);
       return;
     }
-    const detail = await fetchWalkRequestDetail(active.data.walk_request_id);
+    const detail = await fetchWalkRequestDetail(active.walk_request_id);
     if (detail.ok) {
       const next: WalkContext = {
         walkRequestId: detail.data.id,
@@ -146,17 +148,34 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
     void loadWalk();
   }, [loadWalk]);
 
-  // 서버가 산책을 끝냈거나(무수신 자동 종료) 로그인이 끊겼으면 이어 갈 수 없다.
+  // 로그인이 끊겼으면 다시 로그인하게 한다. 보내지 못한 좌표는 트래커에 남고, 로그인 뒤 홈이 이 화면으로 되돌린다.
+  // 서버가 이미 끝낸 산책(자동 종료 포함)이면 더 보내지 않고 안내한 뒤 결과 흐름(6-1)으로 보낸다.
   useEffect(() => {
     if (snapshot.authLost) {
       router.replace("/1-2");
-    } else if (snapshot.walkEnded) {
-      discardWalk();
-      Alert.alert("알림", "산책이 자동으로 종료됐어요.", [
-        { text: "확인", onPress: () => router.replace("/6-1") },
-      ]);
+      return;
     }
-  }, [router, snapshot.authLost, snapshot.walkEnded]);
+    const ended = snapshot.ended;
+    if (!ended || endedHandled.current) return;
+    endedHandled.current = true;
+    const lines = [
+      ended.endReason === "AUTO_TIMEOUT"
+        ? "장시간 위치 기록이 수신되지 않아 산책이 자동 종료되었어요. 서버에 저장된 위치 기록까지만 산책 기록에 반영되었어요."
+        : "산책이 이미 종료되었어요.",
+    ];
+    if (ended.unsentCount > 0) {
+      lines.push(`전송하지 못한 위치 기록 ${ended.unsentCount}개는 저장되지 않았어요.`);
+    }
+    Alert.alert("알림", lines.join("\n"), [
+      {
+        text: "확인",
+        onPress: () => {
+          discardWalk();
+          router.replace("/6-1");
+        },
+      },
+    ]);
+  }, [router, snapshot.authLost, snapshot.ended]);
 
   // 새 위치가 한동안 없으면 GPS 끊김 화면(5-3)으로 안내한다. 신호가 돌아오면 다시 안내할 수 있다.
   // 화면이 열린 시각부터 한 번은 기다린다. 5-3에서 돌아왔을 때 바로 다시 안내하지 않게 한다.
@@ -188,7 +207,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
     try {
       const result = await sendMarker(item);
       if (result.ok) {
-        setState("active");
+        setOverlay("none");
         setNotice(`${label}을(를) 기록했어요.`);
         return;
       }
@@ -222,11 +241,11 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
   const plusTranslateX = useRef(new Animated.Value(164)).current;
   const plusOpacity = useRef(new Animated.Value(0)).current;
 
-  const hasBottomSheet = state === "report";
+  const hasBottomSheet = overlay === "report";
 
   useEffect(() => {
     if (closeReport === "1") {
-      setState("active");
+      setOverlay("none");
       router.setParams({ closeReport: "" });
     }
   }, [closeReport, router]);
@@ -243,7 +262,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
   }, [hasBottomSheet, sheetTranslateY]);
 
   useEffect(() => {
-    if (state === "plusMenu" || state === "markerSelected") {
+    if (overlay === "plusMenu") {
       plusTranslateX.setValue(164);
       plusOpacity.setValue(0);
       Animated.parallel([
@@ -259,7 +278,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
         }),
       ]).start();
     }
-  }, [plusOpacity, plusTranslateX, state]);
+  }, [plusOpacity, plusTranslateX, overlay]);
 
   if (phase !== "ready") {
     return (
@@ -304,13 +323,13 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
       backgroundColor={colors.walkBackgroundStart}
       safeAreaEdges={[]}
       testID={
-        state === "active"
-          ? "screen-5-1"
-          : state === "paused"
-            ? "screen-5-2"
-            : state === "plusMenu" || state === "markerSelected"
-              ? "screen-5-4"
-              : "screen-5-5"
+        overlay === "plusMenu"
+          ? "screen-5-4"
+          : overlay === "report"
+            ? "screen-5-5"
+            : snapshot.paused
+              ? "screen-5-2"
+              : "screen-5-1"
       }
     >
       <View style={styles.root}>
@@ -331,7 +350,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
             <Pressable
               accessibilityLabel="신고"
               accessibilityRole="button"
-              onPress={() => setState("report")}
+              onPress={() => setOverlay("report")}
               style={styles.reportButton}
             >
               <Icon name="icon-warning" width={16} height={16} color={colors.cream} />
@@ -352,7 +371,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
                 <KakaoWalkMap />
               </Suspense>
             )}
-            {state === "paused" ? <View style={styles.pauseOverlay} /> : null}
+            {snapshot.paused ? <View style={styles.pauseOverlay} /> : null}
 
             {USE_WALK_MAP_MOCKUP ? (
               <>
@@ -387,7 +406,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
               </>
             ) : null}
 
-            {state === "plusMenu" || state === "markerSelected" ? (
+            {overlay === "plusMenu" ? (
               <Animated.View
                 style={[
                   styles.plusMenu,
@@ -435,11 +454,11 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
               </Animated.View>
             ) : null}
 
-            {state !== "plusMenu" && state !== "markerSelected" ? (
+            {overlay !== "plusMenu" ? (
               <Pressable
                 accessibilityLabel="산책 기록 추가"
                 accessibilityRole="button"
-                onPress={() => setState("plusMenu")}
+                onPress={() => setOverlay("plusMenu")}
                 style={styles.addButton}
               >
                 <Icon name="icon-add" width={24} height={24} color={colors.white} />
@@ -448,7 +467,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
               <Pressable
                 accessibilityLabel="산책 기록 메뉴 닫기"
                 accessibilityRole="button"
-                onPress={() => setState("active")}
+                onPress={() => setOverlay("none")}
                 style={styles.addButton}
               >
                 <View style={styles.closeIcon}>
@@ -458,7 +477,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
             )}
 
             <View style={styles.statsCard}>
-              {state === "paused" ? (
+              {snapshot.paused ? (
                 <View style={styles.pausedBadge}>
                   <Icon name="icon-pause" width={23} height={23} color={colors.brown} />
                   <Text style={styles.pausedBadgeText}>일시정지됨</Text>
@@ -487,14 +506,11 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
           </View>
 
           <View style={styles.bottomControls}>
-            {state === "paused" ? (
+            {snapshot.paused ? (
               <Pressable
                 accessibilityLabel="이어 걷개"
                 accessibilityRole="button"
-                onPress={() => {
-                  void resumeTracking();
-                  setState("active");
-                }}
+                onPress={() => void resumeTracking()}
                 style={styles.resumeButton}
               >
                 <Icon
@@ -510,10 +526,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
                 <Pressable
                   accessibilityLabel="정지하개"
                   accessibilityRole="button"
-                  onPress={() => {
-                    pauseTracking();
-                    setState("paused");
-                  }}
+                  onPress={() => pauseTracking()}
                   style={[styles.controlPressable, styles.pauseControlPressable]}
                 >
                   <Icon
@@ -553,7 +566,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
             <Pressable
               accessibilityLabel="시트 닫기"
               accessibilityRole="button"
-              onPress={() => setState("active")}
+              onPress={() => setOverlay("none")}
               style={styles.dimLayer}
             />
             <Animated.View
@@ -564,7 +577,7 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
             >
               <ReportSheet
                 busy={reportBusy}
-                onClose={() => setState("active")}
+                onClose={() => setOverlay("none")}
                 onOther={() => router.push("/5-5-other")}
                 onResult={(report) => void submitReport(report)}
               />

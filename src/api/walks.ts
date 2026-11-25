@@ -144,3 +144,14 @@ export function postWalkIncident(walkId: number, body: WalkIncidentBody) {
 export function endWalk(walkId: number) {
   return api.patch<Walk>(`/walks/${walkId}/end`, { status: "COMPLETED" });
 }
+
+// GET /walks/{id}. 좌표 목록은 필요 없으니 limit=1로 요청한다. 종료 상태와 end_reason을 읽을 때 쓴다.
+// 남의 산책은 403, 없는 산책은 404이고 둘 다 detail이 문자열이라 code가 없다.
+export type WalkDetail = {
+  walk: Walk;
+  point_count: number;
+};
+
+export function fetchWalkDetail(walkId: number) {
+  return api.get<WalkDetail>(`/walks/${walkId}?limit=1&offset=0`);
+}
