@@ -154,8 +154,11 @@ export default function WalkHistoryScreen() {
     );
   };
 
-  const walkCountText = volunteer ? `${volunteer.total_walk_count}회` : "-";
-  const totalDistance = volunteer ? `${formatKm(volunteer.total_distance_m)} km` : "-";
+  // 통계는 GET /volunteers/me의 history_*(종료한 모든 산책)를 쓴다. 아래 목록과 같은 범위라 숫자를 맞춰 볼 수 있다.
+  // total_*(COMPLETED만)는 쓰지 않는다. 거리가 없는 산책이 있으면 합계가 일부 빠진 값이다.
+  const walkCountText = volunteer ? `${volunteer.history_walk_count}회` : "-";
+  const totalDistance = volunteer ? `${formatKm(volunteer.history_distance_m)} km` : "-";
+  const distanceIncomplete = volunteer ? !volunteer.history_distance_is_complete : false;
 
   return (
     <Screen
@@ -189,6 +192,9 @@ export default function WalkHistoryScreen() {
         <View style={styles.summaryCard}>
           <Text style={styles.summaryNumbers}>{walkCountText}        {totalDistance}</Text>
           <Text style={styles.summaryLabels}>총 산책                    총 거리</Text>
+          {distanceIncomplete ? (
+            <Text style={styles.summaryNote}>거리는 일부 미확인이에요</Text>
+          ) : null}
         </View>
 
         <Text style={styles.recentTitle}>최근 산책</Text>
@@ -346,6 +352,12 @@ const styles = StyleSheet.create({
     color: colors.brown,
     fontFamily: fontFamilies.nanumSquareRoundRegular,
     fontSize: 13,
+  },
+  summaryNote: {
+    color: colors.brown2,
+    fontFamily: fontFamilies.nanumSquareRoundRegular,
+    fontSize: 11,
+    marginTop: 2,
   },
   recentTitle: {
     color: colors.mildLightBrown,
