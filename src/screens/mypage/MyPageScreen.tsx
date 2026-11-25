@@ -224,6 +224,12 @@ export default function MyPageScreen() {
         <MenuCard
           rows={[
             {
+              label: "산책 가이드",
+              detail: "산책 방법과 안전 안내",
+              icon: "icon-info",
+              onPress: () => router.push("/4-guide"),
+            },
+            {
               label: "알림 설정",
               icon: "icon-notifications",
               onPress: comingSoon("알림 설정"),
@@ -369,7 +375,8 @@ const styles = StyleSheet.create({
   // 섹션 사이 간격은 시안의 섹션 높이(208, 190, 238)를 그대로 따른다.
   sectionInfo: { alignSelf: "center", height: 208, width: 375 },
   sectionWalks: { alignSelf: "center", height: 190, width: 375 },
-  sectionOther: { alignSelf: "center", height: 238, width: 375 },
+  // 시안 높이 238에 "산책 가이드" 행(78)을 더했다.
+  sectionOther: { alignSelf: "center", height: 316, width: 375 },
   sectionTitle: {
     color: colors.brown,
     fontFamily: fontFamilies.nanumSquareRoundBold,

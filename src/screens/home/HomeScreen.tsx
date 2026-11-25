@@ -17,7 +17,9 @@ import { Screen } from "../../components/Screen";
 import { fetchMe, routeForOnboarding } from "../../api/auth";
 import { HOME_STATUS_LABELS } from "../../api/bookingCodes";
 import { setStartableRequest } from "../../api/bookingDraft";
+import { fetchVolunteerMe } from "../../api/volunteers";
 import { getTrackerSnapshot } from "../../api/walkTracker";
+import { hasSeenWalkGuide } from "../../api/walkGuideSeen";
 import { errorMessage } from "../../api/errorMessages";
 import { fetchMyWalkRequests, type MyWalkRequest } from "../../api/walkRequests";
 import {
@@ -77,6 +79,7 @@ export default function HomeScreen() {
   const [booking, setBooking] = useState<Section<MyWalkRequest | null>>({ state: "loading" });
   const [records, setRecords] = useState<Section<WalkHistoryItem[]>>({ state: "loading" });
   const startingRef = useRef(false);
+  const userIdRef = useRef<number | null>(null);
   const homeBooking = booking.state === "ready" ? booking.data : null;
 
   const load = useCallback(async () => {
@@ -154,6 +157,19 @@ export default function HomeScreen() {
         return;
       }
       setStartableRequest(request);
+      // 진행 중인 산책은 위에서 이미 5-1로 보냈다. 가이드는 산책이 없을 때만, 계정마다 한 번 보여 준다.
+      // 계정을 알 수 없거나 확인에 실패하면 가이드가 시작을 막지 않도록 바로 4-1로 간다.
+      let userId = userIdRef.current;
+      if (userId === null) {
+        // 계정 ID는 레벨업 기록과 같이 GET /volunteers/me의 user_id다.
+        const me = await fetchVolunteerMe();
+        userId = me.ok ? me.data.user_id : null;
+        userIdRef.current = userId;
+      }
+      if (userId !== null && !(await hasSeenWalkGuide(userId))) {
+        router.push({ pathname: "/4-guide", params: { from: "start", uid: String(userId) } });
+        return;
+      }
       router.push("/4-1");
     } finally {
       startingRef.current = false;
