@@ -9,6 +9,8 @@ import {
 } from "../api/walkRequests";
 import { LoadView, NoServerNotice } from "../components/LoadView";
 import { PageLayout } from "../components/PageLayout";
+import { RequestActions } from "../components/RequestActions";
+import { ShelterCodePanel } from "../components/ShelterCodePanel";
 import { useLoad } from "../hooks";
 import { useShelterId } from "../session";
 import { formatKst, formatKstRange } from "../time";
@@ -19,11 +21,11 @@ let lastTab: RequestStatus = "PENDING";
 export function BookingsPage({ bookingId }: { bookingId?: string }) {
   const shelterId = useShelterId();
   if (shelterId === null) {
-    return <PageLayout title="예약 관리" description="서버와 연결된 계정에서만 쓸 수 있어요." back="#dashboard"><NoServerNotice /></PageLayout>;
+    return <PageLayout demo={false} title="예약 관리" description="서버와 연결된 계정에서만 쓸 수 있어요." back="#dashboard"><NoServerNotice /></PageLayout>;
   }
   if (bookingId) return <BookingDetailPage bookingId={bookingId} />;
   return (
-    <PageLayout title="예약 관리" description="봉사자의 산책 신청을 확인해요.">
+    <PageLayout demo={false} title="예약 관리" description="봉사자의 산책 신청을 확인해요.">
       <BookingList shelterId={shelterId} />
     </PageLayout>
   );
@@ -109,14 +111,17 @@ function ExperienceValue({ value }: { value: unknown }) {
 
 function BookingDetailPage({ bookingId }: { bookingId: string }) {
   const { state, reload } = useLoad(() => fetchWalkRequest(bookingId), [bookingId]);
+  // 처리 결과 문구는 상세를 다시 불러오는 동안에도 남도록 이 위에서 들고 있는다.
+  const [notice, setNotice] = useState("");
   return (
-    <PageLayout title="신청 상세" description="신청자와 일정을 확인해요." back="#bookings">
-      <LoadView state={state} onRetry={reload}>{(request) => <BookingDetail request={request} />}</LoadView>
+    <PageLayout demo={false} title="신청 상세" description="신청자와 일정을 확인하고 처리해요." back="#bookings">
+      {notice ? <p className="field-hint section-action" role="status">{notice}</p> : null}
+      <LoadView state={state} onRetry={reload}>{(request) => <BookingDetail request={request} onChanged={(message) => { setNotice(message); reload(); }} />}</LoadView>
     </PageLayout>
   );
 }
 
-function BookingDetail({ request }: { request: WalkRequestDetail }) {
+function BookingDetail({ request, onChanged }: { request: WalkRequestDetail; onChanged: (message: string) => void }) {
   const applicant = request.applicant;
   const rejection = rejectionReasonLabel(request.rejection_reason_code);
   const cancel = cancelReasonLabel(request.cancel_reason_code);
@@ -134,15 +139,9 @@ function BookingDetail({ request }: { request: WalkRequestDetail }) {
         {request.status === "REJECTED" ? <div><dt>거절 사유</dt><dd>{[rejection, request.rejection_reason].filter(Boolean).join(" · ") || "사유 없음"}</dd></div> : null}
         {request.status === "CANCELLED" ? <div><dt>취소</dt><dd>{[cancel, request.cancelled_at ? formatKst(request.cancelled_at) : null].filter(Boolean).join(" · ") || "사유 없음"}</dd></div> : null}
       </dl>
-      {request.status === "PENDING" ? (
-        <>
-          <div className="card-actions">
-            <button className="small-action" type="button" disabled>승인</button>
-            <button className="small-action" type="button" disabled>거절</button>
-          </div>
-          <p className="field-hint">승인과 거절은 아직 연결되지 않았어요.</p>
-        </>
-      ) : <p className="field-hint">이 신청은 처리가 끝났어요.</p>}
+      <RequestActions key={`${request.id}-${request.status}`} request={request} onChanged={onChanged} />
+      {request.status === "APPROVED" && !request.walk_id ? <ShelterCodePanel request={request} /> : null}
+      {request.status !== "PENDING" && request.status !== "APPROVED" ? <p className="field-hint">이 신청은 처리가 끝났어요.</p> : null}
       <p className="field-hint">신청자의 이름과 나이는 보호소에 공개되지 않아요.</p>
     </article>
   );

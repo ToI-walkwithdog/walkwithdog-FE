@@ -91,3 +91,44 @@ export type WalkRequestDetail = WalkRequestItem & {
 export function fetchWalkRequest(id: string) {
   return api.get<WalkRequestDetail>(`/walk-requests/${encodeURIComponent(id)}`);
 }
+
+// PATCH /walk-requests/{id}. 본문에는 허용된 필드만 넣는다(추가 필드는 거절된다).
+export function approveWalkRequest(id: number) {
+  return api.patch<unknown>(`/walk-requests/${id}`, { action: "APPROVE" });
+}
+
+// 사유 코드가 OTHER이면 비어 있지 않은 사유가 필요하다(호출하는 쪽에서 확인한다).
+export function rejectWalkRequest(id: number, code: RejectionReasonCode, reason: string) {
+  const text = reason.trim();
+  return api.patch<unknown>(`/walk-requests/${id}`, {
+    action: "REJECT",
+    rejection_reason_code: code,
+    ...(text ? { rejection_reason: text } : {}),
+  });
+}
+
+// 보호소의 취소는 PENDING 또는 APPROVED이면서 시작 전이고 산책 기록이 없을 때만 된다.
+export function cancelWalkRequest(id: number, code: CancelReasonCode) {
+  return api.patch<unknown>(`/walk-requests/${id}`, { action: "CANCEL", cancel_reason_code: code });
+}
+
+// POST /walk-requests/{id}/shelter-code (본문 없음). shelter_code는 앞자리 0이 있는 6자리 문자열이다.
+export type ShelterCodeIssued = { request_id: number; shelter_code: string; expires_at: string };
+
+export function issueShelterCode(id: number) {
+  return api.post<ShelterCodeIssued>(`/walk-requests/${id}/shelter-code`);
+}
+
+// 승인 대기 신청 수. total이 없어서 limit=100씩 마지막 쪽까지 넘기며 센다(안전 상한 50쪽).
+export async function countPendingRequests(shelterId: string) {
+  const first: WalkRequestItem[] = [];
+  let count = 0;
+  for (let page = 0; page < 50; page += 1) {
+    const res = await fetchShelterRequests(shelterId, "PENDING", page * 100, 100);
+    if (!res.ok) return res;
+    count += res.data.length;
+    if (page === 0) first.push(...res.data);
+    if (res.data.length < 100) break;
+  }
+  return { ok: true as const, status: 200, data: { count, first } };
+}

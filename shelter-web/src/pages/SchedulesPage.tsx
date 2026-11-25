@@ -61,7 +61,7 @@ export function SchedulesPage() {
   }
 
   return (
-    <PageLayout title="산책 일정" description="강아지별 가능한 날짜와 시간을 확인해요.">
+    <PageLayout demo={false} title="산책 일정" description="강아지별 가능한 날짜와 시간을 확인해요.">
       {shelterId === null ? <NoServerNotice /> : (
         <>
           <a className="primary-link section-action" href="#schedules/new">일정 등록</a>
@@ -100,7 +100,7 @@ export function SchedulesPage() {
 export function ScheduleFormPage() {
   const shelterId = useShelterId();
   return (
-    <PageLayout title="산책 일정 등록" description="강아지를 고르고 날짜, 시작 시간, 산책 시간을 입력해요." back="#schedules">
+    <PageLayout demo={false} title="산책 일정 등록" description="강아지를 고르고 날짜, 시작 시간, 산책 시간을 입력해요." back="#schedules">
       {shelterId === null ? <NoServerNotice /> : <ScheduleForm shelterId={shelterId} />}
     </PageLayout>
   );

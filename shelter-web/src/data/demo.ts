@@ -1,35 +1,3 @@
-export type DemoDog = {
-  id: string;
-  name: string;
-  breed: string;
-  age: number;
-  size: "소형견" | "중형견" | "대형견";
-  difficulty: number;
-  notes: string;
-  photo: string | null;
-  active: boolean;
-};
-
-export type DemoSchedule = {
-  id: string;
-  dogId: string;
-  date: string;
-  start: string;
-  end: string;
-  maxMinutes: number;
-  active: boolean;
-};
-
-export type DemoBooking = {
-  id: string;
-  dogId: string;
-  scheduleId: string;
-  applicant: string;
-  age: number;
-  experience: string;
-  status: "pending" | "confirmed" | "rejected" | "cancelled";
-};
-
 export type DemoReport = {
   id: string;
   kind: "incoming" | "outgoing";
@@ -52,18 +20,6 @@ export type DemoWalk = {
 };
 
 
-
-export const initialDogs: DemoDog[] = [
-  { id: "kongi", name: "콩이", breed: "믹스견", age: 3, size: "소형견", difficulty: 3.5, notes: "활동량이 많아요.", photo: null, active: true },
-];
-
-export const initialSchedules: DemoSchedule[] = [
-  { id: "schedule-1", dogId: "kongi", date: "2026-11-13", start: "10:00", end: "11:00", maxMinutes: 30, active: true },
-];
-
-export const initialBookings: DemoBooking[] = [
-  { id: "booking-1", dogId: "kongi", scheduleId: "schedule-1", applicant: "봉사자 A", age: 27, experience: "반려견 돌봄 경험 있음 · 주 1~2회 산책", status: "pending" },
-];
 
 export const initialReports: DemoReport[] = [
   { id: "report-1", kind: "incoming", title: "부상", person: "봉사자 A", dogName: "콩이", message: "발을 살펴봐 주세요. (예시)", reviewed: false },

@@ -11,7 +11,7 @@ export function SettingsPage() {
   const shelterId = useShelterId();
   const { state, reload } = useLoad(() => fetchShelter(shelterId ?? ""), [shelterId]);
   return (
-    <PageLayout title="보호소 설정" description="보호소의 기본 정보를 확인하고 활동 지역을 바꿔요.">
+    <PageLayout demo={false} title="보호소 설정" description="보호소의 기본 정보를 확인하고 활동 지역을 바꿔요.">
       {shelterId === null ? <NoServerNotice /> : (
         <LoadView state={state} onRetry={reload}>{(shelter) => <ShelterSettings shelterId={shelterId} shelter={shelter} />}</LoadView>
       )}

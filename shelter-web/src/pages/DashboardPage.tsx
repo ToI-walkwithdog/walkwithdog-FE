@@ -1,6 +1,9 @@
 import { useDemo } from "../DemoContext";
+import { failureText } from "../api/failure";
 import { fetchShelter } from "../api/shelters";
+import { countPendingRequests } from "../api/walkRequests";
 import { useLoad } from "../hooks";
+import { formatKstRange } from "../time";
 import { useSession, useShelterId } from "../session";
 
 const menuItems = [
@@ -15,9 +18,12 @@ const menuItems = [
 
 export function DashboardPage() {
   const { signOut } = useSession();
-  const { dogs, schedules, bookings, reports } = useDemo();
+  const { reports } = useDemo();
   const shelterId = useShelterId();
-  const pending = bookings.filter((booking) => booking.status === "pending");
+  // 승인 대기 수와 카드만 서버 데이터다. total이 없어서 전체 쪽수를 넘기며 센다. 실패해도 나머지 화면은 그대로 보인다.
+  const pendingLoad = useLoad(() => (shelterId === null ? Promise.resolve({ ok: true as const, status: 200, data: { count: 0, first: [] } }) : countPendingRequests(shelterId)), [shelterId]);
+  const pendingCount = pendingLoad.state.status === "ok" ? pendingLoad.state.data.count : null;
+  const pendingCards = pendingLoad.state.status === "ok" ? pendingLoad.state.data.first.slice(0, 5) : [];
   const unreadReports = reports.filter((report) => report.kind === "incoming" && !report.reviewed);
   return (
     <div className="page-shell dashboard-shell">
@@ -42,19 +48,19 @@ export function DashboardPage() {
         </div>
 
         <div className="demo-notice" role="note">
-          <strong>예시 화면입니다</strong>
-          <span>표시된 내용은 실제 예약이나 신고가 아니에요.</span>
+          <strong>일부는 예시 화면이에요</strong>
+          <span>승인 대기 신청은 실제 데이터예요. 신고와 산책 현황은 아직 예시예요.</span>
         </div>
 
         <section className="dashboard-section" aria-labelledby="status-title">
           <div className="section-heading">
             <h2 id="status-title">한눈에 보기</h2>
-            <span className="subtle-label">예시 데이터</span>
+            <span className="subtle-label">신고는 예시</span>
           </div>
           <div className="stats-grid">
             <div className="stat-card">
               <span className="stat-label">승인 대기</span>
-              <strong className="stat-number">{pending.length}<span>건</span></strong>
+              <strong className="stat-number">{pendingCount === null ? "—" : pendingCount}{pendingCount === null ? null : <span>건</span>}</strong>
             </div>
             <div className="stat-card">
               <span className="stat-label">산책 중</span>
@@ -73,34 +79,36 @@ export function DashboardPage() {
               <h2 id="request-title">확인이 필요한 신청</h2>
               <p className="section-description">봉사자의 산책 신청을 확인해요.</p>
             </div>
-            <span className="count-badge">{pending.length}</span>
+            <span className="count-badge">{pendingCount === null ? "—" : pendingCount}</span>
           </div>
-          {pending.map((request) => {
-            const dog = dogs.find((item) => item.id === request.dogId);
-            const schedule = schedules.find((item) => item.id === request.scheduleId);
-            return (
+          {pendingCards.map((request) => (
             <article className="request-card" key={request.id}>
               <div className="request-topline">
                 <span className="request-status">승인 대기</span>
-                <span className="example-label">예시</span>
               </div>
-              <h3>{dog?.name ?? "알 수 없는 강아지"}와 산책</h3>
+              <h3>{request.dog?.name ?? "강아지"}와 산책</h3>
               <dl className="request-details">
-                <div><dt>신청자</dt><dd>{request.applicant}</dd></div>
-                <div><dt>신청 일정</dt><dd>{schedule ? `${schedule.date} · ${schedule.start}–${schedule.end}` : "일정 없음"}</dd></div>
+                <div><dt>신청 일정</dt><dd>{formatKstRange(request.requested_start_at, request.requested_end_at)}</dd></div>
               </dl>
-              <a className="inline-link" href="#bookings">신청 확인하기</a>
+              <a className="inline-link" href={`#bookings/${request.id}`}>신청 확인하기</a>
             </article>
-          )})}
-          {pending.length === 0 ? <p className="empty-text">승인 대기 중인 예시 신청이 없어요.</p> : null}
-          <p className="section-footnote">승인 결과는 앱이나 서버에 전달되지 않아요.</p>
+          ))}
+          {pendingLoad.state.status === "loading" ? <p className="empty-text" role="status">불러오는 중이에요.</p> : null}
+          {pendingLoad.state.status === "error" ? (
+            <div>
+              <p className="form-error" role="alert">{failureText(pendingLoad.state.failure)}</p>
+              <button className="small-action section-action" type="button" onClick={pendingLoad.reload}>다시 불러오기</button>
+            </div>
+          ) : null}
+          {pendingLoad.state.status === "ok" && pendingCards.length === 0 ? <p className="empty-text">{shelterId === null ? "미리보기에서는 서버 데이터를 볼 수 없어요." : "승인 대기 중인 신청이 없어요."}</p> : null}
+          {pendingCount !== null && pendingCount > pendingCards.length ? <a className="inline-link" href="#bookings">나머지 {pendingCount - pendingCards.length}건 보기</a> : null}
         </section>
 
         <section className="dashboard-section" aria-labelledby="menu-title">
           <div className="section-heading">
             <div>
               <h2 id="menu-title">보호소 관리</h2>
-              <p className="section-description">각 메뉴를 목업으로 확인할 수 있어요.</p>
+              <p className="section-description">강아지, 일정, 예약, 설정은 서버와 연결돼 있어요. 나머지 메뉴는 예시예요.</p>
             </div>
           </div>
           <div className="menu-list">

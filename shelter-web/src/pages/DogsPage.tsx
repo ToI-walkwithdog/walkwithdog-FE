@@ -48,7 +48,7 @@ export function DogsPage() {
   }
 
   return (
-    <PageLayout title="강아지 관리" description="보호견의 정보와 산책 가능 상태를 관리해요.">
+    <PageLayout demo={false} title="강아지 관리" description="보호견의 정보와 산책 가능 상태를 관리해요.">
       {shelterId === null ? <NoServerNotice /> : (
         <>
           <a className="primary-link section-action" href="#dogs/new">강아지 등록</a>
@@ -91,7 +91,7 @@ export function DogsPage() {
 export function DogFormPage({ dogId }: { dogId?: string }) {
   const shelterId = useShelterId();
   if (shelterId === null) {
-    return <PageLayout title={dogId ? "강아지 정보 수정" : "강아지 등록"} description="서버와 연결된 계정에서만 쓸 수 있어요." back="#dogs"><NoServerNotice /></PageLayout>;
+    return <PageLayout demo={false} title={dogId ? "강아지 정보 수정" : "강아지 등록"} description="서버와 연결된 계정에서만 쓸 수 있어요." back="#dogs"><NoServerNotice /></PageLayout>;
   }
   if (!dogId) return <DogCreateForm shelterId={shelterId} />;
   return <DogEditLoader dogId={dogId} />;
@@ -100,7 +100,7 @@ export function DogFormPage({ dogId }: { dogId?: string }) {
 function DogEditLoader({ dogId }: { dogId: string }) {
   const { state, reload } = useLoad(() => fetchDog(dogId), [dogId]);
   return (
-    <PageLayout title="강아지 정보 수정" description="이름, 견종, 나이와 산책 설정을 바꿀 수 있어요." back="#dogs">
+    <PageLayout demo={false} title="강아지 정보 수정" description="이름, 견종, 나이와 산책 설정을 바꿀 수 있어요." back="#dogs">
       <LoadView state={state} onRetry={reload}>{(dog) => <DogEditForm dog={dog} />}</LoadView>
     </PageLayout>
   );
@@ -212,7 +212,7 @@ function DogCreateForm({ shelterId }: { shelterId: string }) {
   }
 
   return (
-    <PageLayout title="강아지 등록" description="사진과 첫 산책 일정을 함께 등록해요." back="#dogs">
+    <PageLayout demo={false} title="강아지 등록" description="사진과 첫 산책 일정을 함께 등록해요." back="#dogs">
       <form className="form-card" onSubmit={submit} noValidate>
         <label>이름<input value={name} onChange={(event) => setName(event.target.value)} required maxLength={50} /></label>
         <FieldError errors={errors} name="name" />
