@@ -89,7 +89,7 @@ export function DashboardPage() {
                 <div><dt>신청자</dt><dd>{request.applicant}</dd></div>
                 <div><dt>신청 일정</dt><dd>{schedule ? `${schedule.date} · ${schedule.start}–${schedule.end}` : "일정 없음"}</dd></div>
               </dl>
-              <a className="inline-link" href={`#bookings/${request.id}`}>신청 확인하기</a>
+              <a className="inline-link" href="#bookings">신청 확인하기</a>
             </article>
           )})}
           {pending.length === 0 ? <p className="empty-text">승인 대기 중인 예시 신청이 없어요.</p> : null}

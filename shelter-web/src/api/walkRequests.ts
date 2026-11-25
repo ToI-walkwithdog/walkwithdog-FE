@@ -1,0 +1,93 @@
+import { api } from "./client";
+
+export type RequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+export type DisplayStatus = RequestStatus | "COMPLETED";
+export type RejectionReasonCode = "SCHEDULE_CONFLICT" | "EXPERIENCE_MISMATCH" | "INFO_INSUFFICIENT" | "OTHER";
+export type CancelReasonCode = "SCHEDULE_CHANGED" | "CANNOT_VISIT";
+
+export const STATUS_TABS: { status: RequestStatus; label: string }[] = [
+  { status: "PENDING", label: "승인 대기" },
+  { status: "APPROVED", label: "승인됨" },
+  { status: "REJECTED", label: "거절됨" },
+  { status: "CANCELLED", label: "취소됨" },
+];
+
+export const DISPLAY_STATUS_LABELS: Record<DisplayStatus, string> = {
+  PENDING: "승인 대기",
+  APPROVED: "승인됨",
+  REJECTED: "거절됨",
+  CANCELLED: "취소됨",
+  COMPLETED: "산책 완료",
+};
+
+export const REJECTION_REASONS: { code: RejectionReasonCode; label: string }[] = [
+  { code: "SCHEDULE_CONFLICT", label: "일정이 맞지 않아요" },
+  { code: "EXPERIENCE_MISMATCH", label: "경험이 맞지 않아요" },
+  { code: "INFO_INSUFFICIENT", label: "정보가 부족해요" },
+  { code: "OTHER", label: "기타 (사유 입력)" },
+];
+
+export const CANCEL_REASONS: { code: CancelReasonCode; label: string }[] = [
+  { code: "SCHEDULE_CHANGED", label: "보호소 일정이 바뀌었어요" },
+  { code: "CANNOT_VISIT", label: "방문을 받기 어려워요" },
+];
+
+export function statusLabel(item: { status: string; display_status?: string | null }): string {
+  const key = item.display_status ?? item.status;
+  return key in DISPLAY_STATUS_LABELS ? DISPLAY_STATUS_LABELS[key as DisplayStatus] : key;
+}
+
+export function rejectionReasonLabel(code: string | null | undefined): string | null {
+  return REJECTION_REASONS.find((reason) => reason.code === code)?.label ?? null;
+}
+
+export function cancelReasonLabel(code: string | null | undefined): string | null {
+  return CANCEL_REASONS.find((reason) => reason.code === code)?.label ?? null;
+}
+
+// GET /shelters/{id}/walk-requests 항목. 신청자 정보는 없고(user_id뿐) 상세에만 있다.
+export type WalkRequestItem = {
+  id: number;
+  dog_id: number;
+  dog?: { id: number; name: string; image_url: string | null } | null;
+  user_id?: number;
+  requested_start_at: string;
+  requested_end_at: string;
+  status: RequestStatus;
+  display_status?: DisplayStatus | null;
+  walk_id?: number | null;
+  walk_status?: string | null;
+  created_at?: string;
+  rejection_reason?: string | null;
+  rejection_reason_code?: string | null;
+  cancel_reason_code?: string | null;
+  cancelled_at?: string | null;
+  cancelled_actor_role?: string | null;
+};
+
+export const PAGE_SIZE = 20;
+
+// 본문이 배열 그대로이고 total, has_more가 없다. 가져온 개수가 limit보다 적으면 마지막이다. 최신순이다.
+export function fetchShelterRequests(shelterId: string, status: RequestStatus, offset = 0, limit = PAGE_SIZE) {
+  return api.get<WalkRequestItem[]>(
+    `/shelters/${encodeURIComponent(shelterId)}/walk-requests?status=${status}&limit=${limit}&offset=${offset}`,
+  );
+}
+
+// 신청자의 name, age는 보호소에게 항상 null이라 쓰지 않는다.
+export type Applicant = {
+  id?: number;
+  nickname?: string | null;
+  dog_experience?: unknown;
+  experienced_breed?: unknown;
+  walk_frequency?: unknown;
+};
+
+export type WalkRequestDetail = WalkRequestItem & {
+  applicant?: Applicant | null;
+  max_walk_minutes?: number | null;
+};
+
+export function fetchWalkRequest(id: string) {
+  return api.get<WalkRequestDetail>(`/walk-requests/${encodeURIComponent(id)}`);
+}

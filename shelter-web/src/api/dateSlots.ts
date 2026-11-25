@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { DateSlotInput } from "./dogs";
+import { kstParts } from "../time";
 
 // GET /dogs/{id}/date-slots 항목(비활성 포함). 응답 모양이 문서에 없어 필드를 선택으로 두고,
 // 한국 시간 필드(slot_date, start_time, end_time)가 없으면 UTC starts_at, ends_at에서 계산한다.
@@ -23,18 +24,6 @@ export type DateSlot = {
   durationMinutes: number | null;
   active: boolean;
 };
-
-const KST = "Asia/Seoul";
-
-function kstParts(iso: string): { date: string; time: string } | null {
-  const value = new Date(iso);
-  if (Number.isNaN(value.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: KST, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-  }).formatToParts(value);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
-}
 
 export function normalizeSlot(raw: DateSlotRaw): DateSlot | null {
   const id = raw.id ?? raw.date_slot_id;
