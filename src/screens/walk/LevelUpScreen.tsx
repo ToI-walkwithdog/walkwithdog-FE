@@ -26,7 +26,8 @@ import Ribbon12 from "../../assets/images/level-up-ribbon-12.svg";
 import Ribbon13 from "../../assets/images/level-up-ribbon-13.svg";
 import Ribbon24 from "../../assets/images/level-up-ribbon-24.svg";
 import Ribbon26 from "../../assets/images/level-up-ribbon-26.svg";
-import { getLevelUpEvent } from "../../api/walkResult";
+import { markLevelUpSeen } from "../../api/levelUpSeen";
+import { getLevelUpEvent, getLevelUpUserId } from "../../api/walkResult";
 import { GradientView } from "../../components/GradientView";
 import { Screen } from "../../components/Screen";
 import { gradientLevelUpButton } from "../../theme/gradients";
@@ -154,7 +155,13 @@ export default function LevelUpScreen() {
   const event = getLevelUpEvent();
 
   useEffect(() => {
-    if (!event) router.replace("/3");
+    if (!event) {
+      router.replace("/3");
+      return;
+    }
+    // 같은 계정이 같은 레벨업 이벤트를 다시 보지 않게, 보여 준 사실을 기억한다.
+    const userId = getLevelUpUserId();
+    if (userId !== null) void markLevelUpSeen(userId, event.event_id);
   }, [event, router]);
 
   if (!event) return null;
@@ -192,7 +199,7 @@ export default function LevelUpScreen() {
                 {`Level UP!\n산책 레벨 ${event.after_level}이 되었어요`}
               </Text>
               <Text style={styles.levelSubtext}>
-                {"이제 더 많은 친구들과\n산책할 수 있어요!"}
+                {"꾸준한 산책으로\n새로운 레벨을 달성했어요."}
               </Text>
             </View>
           </View>

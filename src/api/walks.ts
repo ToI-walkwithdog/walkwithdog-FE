@@ -168,6 +168,7 @@ export type WalkDetailPoint = {
   latitude: string | number;
   longitude: string | number;
   recorded_at: string;
+  accuracy_m: string | number | null;
 };
 
 export type WalkDetail = {

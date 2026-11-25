@@ -7,10 +7,12 @@ import { routeForFailure } from "../../api/auth";
 import type { ApiFailure } from "../../api/client";
 import {
   invalidateHistoryCache,
+  isLevelEligibleWalk,
   loadWalkResult,
+  markLevelPending,
+  prepareLevelUp,
   resolveLevelUp,
   resolveResultWalkId,
-  setLevelUpEvent,
   walkFailureMessage,
   type WalkResult,
 } from "../../api/walkResult";
@@ -49,7 +51,8 @@ export default function WalkRecordSaveScreen() {
   const [message, setMessage] = useState("");
   const [memoError, setMemoError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [checkingLevel, setCheckingLevel] = useState(false);
+  // 레벨 평가를 기다리는 동안의 서버 상태. PENDING은 평가 중, FAILED는 서버가 다시 시도하는 지연이다.
+  const [levelWaiting, setLevelWaiting] = useState<"PENDING" | "FAILED" | null>(null);
   const [messageInputHeight, setMessageInputHeight] = useState(73);
   const savingRef = useRef(false);
   const cancelledRef = useRef(false);
@@ -87,9 +90,12 @@ export default function WalkRecordSaveScreen() {
       return;
     }
     if (!loaded.ok || !summaryResult.ok) return;
-    // 인계를 접수한 뒤에만 메모를 저장할 수 있다.
+    // 메모는 인계를 접수한 산책(SELF_REPORTED, ISSUE_REPORTED)이거나 인계가 필요 없는 산책(NOT_REQUIRED)만 저장할 수 있다.
+    // 인계가 필요한데 아직 접수하지 않았으면(NOT_CONFIRMED) 막고 인계부터 하게 한다.
     if (summaryResult.data.handover_status === "NOT_CONFIRMED") {
-      router.replace("/6-1");
+      Alert.alert("인계를 먼저 완료해 주세요", "인계를 접수한 뒤에 메모를 저장할 수 있어요.", [
+        { text: "확인", onPress: () => router.replace("/6-1") },
+      ]);
       return;
     }
     setResult(loaded.data);
@@ -147,39 +153,72 @@ export default function WalkRecordSaveScreen() {
       : [{ id: marker.id, type: marker.marker_type, memo: marker.memo, latitude, longitude }];
   });
 
-  const handleMemoFailure = async (failed: ApiFailure) => {
-    const target = await routeForFailure(failed);
+  // 메모를 저장한다. 계속 진행해도 되면 true, 멈춰야 하면 false를 돌려준다.
+  // 첫 저장은 expected_version=0, 수정은 서버의 현재 버전을 쓴다. 서버에 이미 있는 메모를 조용히 덮어쓰지 않는다.
+  const saveMemo = async (text: string): Promise<boolean> => {
+    const saved = await putWalkPrivateMemo(walk.id, text, memoVersion.current);
+    if (saved.ok) {
+      memoVersion.current = saved.data.version;
+      invalidateHistoryCache();
+      return true;
+    }
+    const target = await routeForFailure(saved);
     if (target) {
       router.replace(target);
-      return;
+      return false;
     }
-    if (failed.code === null && failed.status === 409) {
-      // 인계가 아직이거나 메모가 다른 곳에서 바뀌었다. 요약을 다시 조회해 판단한다.
-      const fresh = await fetchWalkSummary(walk.id);
-      if (fresh.ok && fresh.data.handover_status === "NOT_CONFIRMED") {
-        Alert.alert("알림", "인계를 접수한 뒤에 메모를 저장할 수 있어요.", [
-          { text: "확인", onPress: () => router.replace("/6-1") },
-        ]);
-        return;
-      }
-      if (fresh.ok) {
-        const latest = fresh.data.private_memo;
-        memoVersion.current = latest?.version ?? 0;
-        setSummary(fresh.data);
-        Alert.alert("메모가 바뀌었어요", "다른 곳에서 메모가 바뀌었어요. 최신 메모를 볼까요?", [
-          { text: "내 내용 유지" },
-          { text: "최신 메모 보기", onPress: () => setMessage(latest?.memo ?? "") },
-        ]);
-        return;
-      }
-    }
-    if (failed.code === null && (failed.status === 403 || failed.status === 404)) {
-      Alert.alert("알림", walkFailureMessage(failed), [
+    if (saved.code === null && (saved.status === 403 || saved.status === 404)) {
+      Alert.alert("알림", walkFailureMessage(saved), [
         { text: "확인", onPress: () => router.replace("/3") },
       ]);
-      return;
+      return false;
     }
-    Alert.alert("알림", walkFailureMessage(failed));
+    if (saved.code === null && saved.status === 422) {
+      Alert.alert("알림", "메모 내용을 확인해 주세요. 메모는 비울 수 없고 1,000자까지 쓸 수 있어요.");
+      return false;
+    }
+    // 409(버전이 다르거나 인계 전)나 응답 유실(네트워크, 시간 초과, 서버 오류)이다.
+    // 실패로 단정하지 않고 요약을 다시 조회해 서버의 실제 상태로 판단한다.
+    const fresh = await fetchWalkSummary(walk.id);
+    if (!fresh.ok) {
+      Alert.alert("알림", walkFailureMessage(saved));
+      return false;
+    }
+    setSummary(fresh.data);
+    if (fresh.data.handover_status === "NOT_CONFIRMED") {
+      Alert.alert("인계를 먼저 완료해 주세요", "인계를 접수한 뒤에 메모를 저장할 수 있어요.", [
+        { text: "확인", onPress: () => router.replace("/6-1") },
+      ]);
+      return false;
+    }
+    const latest = fresh.data.private_memo;
+    if (latest && latest.memo === text) {
+      // 응답만 유실됐고 서버에는 저장돼 있다.
+      memoVersion.current = latest.version;
+      invalidateHistoryCache();
+      return true;
+    }
+    if (latest && latest.version !== memoVersion.current) {
+      // 다른 곳에서 메모가 바뀌었다. 서버의 메모를 보여 주고 사용자가 정하게 한다.
+      Alert.alert(
+        "메모가 바뀌었어요",
+        `다른 곳에서 저장한 메모가 있어요.\n\n${latest.memo}\n\n어떻게 할까요?`,
+        [
+          // 취소하면 버전을 그대로 두어, 다시 저장해도 같은 확인이 뜬다(조용히 덮어쓰지 않는다).
+          { text: "서버 메모 사용", onPress: () => {
+            memoVersion.current = latest.version;
+            setMessage(latest.memo);
+          } },
+          { text: "내 메모로 덮어쓰기", onPress: () => {
+            memoVersion.current = latest.version;
+          } },
+          { text: "닫기", style: "cancel" },
+        ],
+      );
+      return false;
+    }
+    Alert.alert("알림", walkFailureMessage(saved));
+    return false;
   };
 
   const save = async () => {
@@ -192,33 +231,50 @@ export default function WalkRecordSaveScreen() {
     savingRef.current = true;
     setSaving(true);
     try {
-      // 서버는 빈 메모를 받지 않는다. 비어 있거나 저장된 메모와 같으면 저장 요청을 보내지 않는다.
+      // 메모는 선택이다. 비어 있거나 저장된 메모와 같으면 저장 요청을 보내지 않는다(서버는 빈 메모를 받지 않는다).
       if (text && text !== (summary.private_memo?.memo ?? "")) {
-        const saved = await putWalkPrivateMemo(walk.id, text, memoVersion.current);
-        if (!saved.ok) {
-          await handleMemoFailure(saved);
+        if (!(await saveMemo(text))) return;
+      }
+      // 레벨 평가는 메모와 무관하다. 평가를 확인하는 동안 서버 상태를 보여 준다.
+      const fresh = await fetchWalkSummary(walk.id);
+      if (!fresh.ok) {
+        if (isLevelEligibleWalk(walk)) markLevelPending(walk.id);
+        router.replace("/9-1");
+        return;
+      }
+      setLevelWaiting(fresh.data.level_evaluation_status === "FAILED" ? "FAILED" : "PENDING");
+      const outcome = await resolveLevelUp(
+        walk.id,
+        walk,
+        fresh.data,
+        (status) => setLevelWaiting(status),
+        () => cancelledRef.current,
+      );
+      if (cancelledRef.current) return;
+      if (outcome.kind === "level_up") {
+        // 이미 본 레벨업은 다시 보여 주지 않는다.
+        if (await prepareLevelUp(outcome.event)) {
+          router.replace("/6-3");
           return;
         }
-        memoVersion.current = saved.data.version;
-        invalidateHistoryCache();
-      }
-      // 서버의 레벨 평가를 확인한다. 평가가 끝나기를 정해진 횟수만 기다리고, 레벨업이 없으면 이력으로 간다.
-      setCheckingLevel(true);
-      const fresh = await fetchWalkSummary(walk.id);
-      const event = fresh.ok
-        ? await resolveLevelUp(walk.id, walk, fresh.data, () => cancelledRef.current)
-        : null;
-      if (cancelledRef.current) return;
-      if (event) {
-        setLevelUpEvent(event);
-        router.replace("/6-3");
+      } else if (outcome.kind === "needs_handover") {
+        router.replace("/6-1");
+        return;
+      } else if (outcome.kind === "unresolved") {
+        // 평가가 끝나지 않았다. 레벨업이 없다고 단정하지 않고, 이력을 다시 볼 때 확인한다.
+        markLevelPending(walk.id);
+        Alert.alert(
+          outcome.status === "FAILED" ? "레벨 평가가 지연되고 있어요" : "레벨을 평가하고 있어요",
+          "산책 기록에서 나중에 레벨 결과를 확인할 수 있어요.",
+          [{ text: "확인", onPress: () => router.replace("/9-1") }],
+        );
         return;
       }
       router.replace("/9-1");
     } finally {
       savingRef.current = false;
       setSaving(false);
-      setCheckingLevel(false);
+      setLevelWaiting(null);
     }
   };
 
@@ -356,7 +412,13 @@ export default function WalkRecordSaveScreen() {
                 style={[styles.saveButton, saving && styles.savingButton]}
               >
                 <Text style={styles.saveButtonText}>
-                  {checkingLevel ? "레벨을 확인하는 중..." : saving ? "저장하는 중..." : "산책 기록 저장"}
+                  {levelWaiting === "FAILED"
+                    ? "레벨 평가가 지연되고 있어요..."
+                    : levelWaiting === "PENDING"
+                      ? "레벨을 평가하는 중..."
+                      : saving
+                        ? "저장하는 중..."
+                        : "산책 기록 저장"}
                 </Text>
               </Pressable>
             </GradientView>

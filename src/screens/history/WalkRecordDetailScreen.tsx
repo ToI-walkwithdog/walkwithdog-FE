@@ -7,6 +7,7 @@ import type { ApiFailure } from "../../api/client";
 import {
   getResultWalkId,
   loadWalkResult,
+  prepareStoredLevelUp,
   setResultWalkId,
   walkFailureMessage,
   type WalkResult,
@@ -82,6 +83,10 @@ export default function WalkRecordDetailScreen() {
     setResult(loaded.data);
     setSummary(summaryResult.data);
     setPhase("ready");
+    // 서버에 저장된 레벨업 이벤트가 아직 보지 않은 것이면 레벨업 화면을 보여 준다(본 이벤트는 다시 보여 주지 않는다).
+    void prepareStoredLevelUp(loaded.data.walk, summaryResult.data).then((show) => {
+      if (show) router.push("/6-3");
+    });
   }, [router]);
 
   useEffect(() => {

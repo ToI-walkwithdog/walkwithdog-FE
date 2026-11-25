@@ -1,6 +1,8 @@
 // 산책을 마친 뒤의 화면(6-1 인계, 6-2 기록 저장, 6-3 레벨업, 9-x 이력)이 값을 넘기는 메모리 저장소와 도우미.
 import type { ApiFailure, ApiResult } from "./client";
 import { errorMessage } from "./errorMessages";
+import { hasSeenLevelUp } from "./levelUpSeen";
+import { fetchVolunteerMe } from "./volunteers";
 import { fetchWalkRequestDetail } from "./walkRequests";
 import { getEndedWalk, setEndedWalk } from "./walkSession";
 import {
@@ -28,13 +30,20 @@ export function setResultWalkId(id: number | null) {
 export type LevelUpEvent = NonNullable<WalkSummary["level_up_event"]>;
 
 let levelUpEvent: LevelUpEvent | null = null;
+// 이 이벤트를 받은 계정 ID. 본 이벤트를 "계정:이벤트"로 기억할 때 쓴다(모르면 null).
+let levelUpUserId: number | null = null;
 
 export function getLevelUpEvent() {
   return levelUpEvent;
 }
 
-export function setLevelUpEvent(value: LevelUpEvent | null) {
+export function getLevelUpUserId() {
+  return levelUpUserId;
+}
+
+export function setLevelUpEvent(value: LevelUpEvent | null, userId: number | null = null) {
   levelUpEvent = value;
+  levelUpUserId = userId;
 }
 
 // 9-1에서 고른 이력 항목. 9-2가 강아지와 보호소 이름을 여기서 쓴다.
@@ -134,34 +143,97 @@ export function isLevelEligibleWalk(walk: Pick<Walk, "status" | "end_reason">): 
   return walk.status === "COMPLETED" && walk.end_reason === "USER";
 }
 
+// 평가 작업은 30초마다 돌고, 한 번에 50건까지 처리하며 잠금 경합으로 늦어질 수 있다.
+// 그래서 3초 간격으로 약 60초까지 확인한다.
 const LEVEL_POLL_INTERVAL_MS = 3000;
-// 서버의 평가 작업이 30초마다 돌아서, 그 주기를 한 번 넘기도록 약 33초까지 기다린다.
-const LEVEL_POLL_MAX_TRIES = 11;
+const LEVEL_POLL_MAX_TRIES = 20;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-// 서버의 레벨 평가 결과를 확인한다. PENDING이면 정해진 횟수만 다시 조회하고,
-// 끝내 NOT_ELIGIBLE, FAILED, PENDING이면 레벨업이 없는 것으로 보고 건너뛴다.
+export type LevelOutcome =
+  // 평가가 끝났고 레벨이 올랐다(COMPLETED + level_up_event).
+  | { kind: "level_up"; event: LevelUpEvent }
+  // 평가가 끝났고 레벨업이 없다(COMPLETED + 이벤트 없음), 또는 대상이 아니다(NOT_ELIGIBLE).
+  | { kind: "done" }
+  // 대상이 아닌 이유가 인계 미접수다.
+  | { kind: "needs_handover" }
+  // 기다리는 시간이 끝날 때까지 평가가 끝나지 않았다. "레벨업 없음"으로 단정하면 안 된다.
+  | { kind: "unresolved"; status: "PENDING" | "FAILED" };
+
+// 서버의 레벨 평가 결과를 확인한다.
+// PENDING은 "평가 중", FAILED는 서버가 60초 뒤 다시 시도하니 "지연"으로 보고 계속 기다린다.
 export async function resolveLevelUp(
   walkId: number,
   walk: Pick<Walk, "status" | "end_reason">,
   first: WalkSummary,
+  onWaiting: (status: "PENDING" | "FAILED") => void,
   isCancelled: () => boolean,
-): Promise<LevelUpEvent | null> {
-  if (!isLevelEligibleWalk(walk)) return null;
+): Promise<LevelOutcome> {
+  if (!isLevelEligibleWalk(walk)) return { kind: "done" };
   let summary = first;
   for (let attempt = 0; ; attempt += 1) {
     const status = summary.level_evaluation_status;
     if (status === "COMPLETED") {
       const event = summary.level_up_event;
-      return event && event.after_level > event.before_level ? event : null;
+      return event && event.after_level > event.before_level
+        ? { kind: "level_up", event }
+        : { kind: "done" };
     }
-    if (status !== "PENDING" || attempt >= LEVEL_POLL_MAX_TRIES) return null;
+    if (status === "NOT_ELIGIBLE") {
+      return summary.handover_status === "NOT_CONFIRMED"
+        ? { kind: "needs_handover" }
+        : { kind: "done" };
+    }
+    onWaiting(status);
+    if (attempt >= LEVEL_POLL_MAX_TRIES) return { kind: "unresolved", status };
     await sleep(LEVEL_POLL_INTERVAL_MS);
-    if (isCancelled()) return null;
+    if (isCancelled()) return { kind: "unresolved", status };
     const next = await fetchWalkSummary(walkId);
     if (next.ok) summary = next.data;
   }
+}
+
+// 레벨업을 보여 줄지 정한다. 같은 계정이 이미 본 이벤트면 보여 주지 않는다.
+// 계정 ID는 GET /volunteers/me의 user_id다. 못 가져오면 기억하지 못하므로 한 번 보여 준다.
+export async function prepareLevelUp(event: LevelUpEvent): Promise<boolean> {
+  const me = await fetchVolunteerMe();
+  if (me.ok && (await hasSeenLevelUp(me.data.user_id, event.event_id))) return false;
+  setLevelUpEvent(event, me.ok ? me.data.user_id : null);
+  return true;
+}
+
+// 기다리는 시간이 지나도 평가가 끝나지 않은 산책. 나중에(9-1을 다시 볼 때) 다시 확인한다.
+const pendingLevelWalks = new Set<number>();
+
+export function markLevelPending(walkId: number) {
+  pendingLevelWalks.add(walkId);
+}
+
+// 나중에 다시 확인한다. 평가가 끝났고 아직 보지 않은 레벨업이 있으면 6-3이 쓸 이벤트를 준비하고 true를 돌려준다.
+export async function checkPendingLevelUps(): Promise<boolean> {
+  for (const walkId of [...pendingLevelWalks]) {
+    const summary = await fetchWalkSummary(walkId);
+    if (!summary.ok) continue;
+    const status = summary.data.level_evaluation_status;
+    if (status === "PENDING" || status === "FAILED") continue;
+    pendingLevelWalks.delete(walkId);
+    const event = summary.data.level_up_event;
+    if (status === "COMPLETED" && event && event.after_level > event.before_level) {
+      if (await prepareLevelUp(event)) return true;
+    }
+  }
+  return false;
+}
+
+// 같은 산책의 요약에 저장된 레벨업 이벤트가 아직 보지 않은 것이면 6-3이 쓸 이벤트를 준비한다.
+export async function prepareStoredLevelUp(
+  walk: Pick<Walk, "status" | "end_reason">,
+  summary: WalkSummary,
+): Promise<boolean> {
+  const event = summary.level_up_event;
+  if (!isLevelEligibleWalk(walk) || summary.level_evaluation_status !== "COMPLETED") return false;
+  if (!event || event.after_level <= event.before_level) return false;
+  return prepareLevelUp(event);
 }

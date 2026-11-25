@@ -6,6 +6,7 @@ import { routeForFailure } from "../../api/auth";
 import type { ApiFailure } from "../../api/client";
 import { errorMessage } from "../../api/errorMessages";
 import {
+  checkPendingLevelUps,
   getHistoryVersion,
   HISTORY_PAGE_SIZE,
   selectHistoryWalk,
@@ -20,6 +21,8 @@ import { formatMonthDay } from "../../utils/kst";
 import { formatKm } from "../../utils/walkFormat";
 
 type Phase = "loading" | "ready" | "error";
+// NEEDS_HANDOVER는 인계를 아직 접수하지 않은 산책만 본다(서버 필터 handover_status=NOT_CONFIRMED).
+type HistoryFilter = "ALL" | "NEEDS_HANDOVER";
 
 // 페이지 사이에 목록이 바뀌면 같은 산책이 두 번 올 수 있다. 산책 ID로 한 번만 남긴다.
 function mergeById(current: WalkHistoryItem[], incoming: WalkHistoryItem[]): WalkHistoryItem[] {
@@ -49,20 +52,27 @@ export default function WalkHistoryScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [volunteer, setVolunteer] = useState<VolunteerMe | null>(null);
+  const [filter, setFilter] = useState<HistoryFilter>("ALL");
+  // 인계가 필요한 산책 수. 서버의 total(현재 필터의 전체 개수)을 쓴다.
+  const [needsCount, setNeedsCount] = useState<number | null>(null);
   const sequence = useRef(0);
   // 다음 offset은 서버가 돌려준 원본 개수만큼 더한다. 중복을 뺀 목록 길이를 쓰지 않는다.
   const nextOffset = useRef(0);
+  // 서버가 알려 준 현재 필터의 전체 개수.
+  const totalCount = useRef(0);
   const seenVersion = useRef(getHistoryVersion());
 
-  // 처음과 새로고침은 첫 페이지부터 다시 불러온다. 늦게 온 응답은 버린다.
+  // 처음, 필터 변경, 새로고침은 첫 페이지부터 다시 불러온다. 늦게 온 응답은 버린다.
   const loadFirstPage = useCallback(
-    async (mode: "initial" | "refresh") => {
+    async (target: HistoryFilter, mode: "initial" | "refresh") => {
       const current = ++sequence.current;
       if (mode === "initial") setPhase("loading");
       else setRefreshing(true);
-      const [history, stats] = await Promise.all([
-        fetchWalkHistory(HISTORY_PAGE_SIZE, 0),
+      const needsOnly = target === "NEEDS_HANDOVER";
+      const [history, stats, pending] = await Promise.all([
+        fetchWalkHistory(HISTORY_PAGE_SIZE, 0, needsOnly ? "NOT_CONFIRMED" : undefined),
         fetchVolunteerMe(),
+        needsOnly ? Promise.resolve(null) : fetchWalkHistory(1, 0, "NOT_CONFIRMED"),
       ]);
       if (current !== sequence.current) return;
       setRefreshing(false);
@@ -70,8 +80,15 @@ export default function WalkHistoryScreen() {
       if (history.ok) {
         setItems(mergeById([], history.data.walks));
         nextOffset.current = history.data.walks.length;
-        // 요청한 limit보다 적게 오면 마지막 페이지다.
-        setHasMore(history.data.walks.length >= HISTORY_PAGE_SIZE);
+        totalCount.current = history.data.total;
+        // 요청한 limit보다 적게 오면 마지막 페이지다. 서버의 total도 함께 쓴다.
+        setHasMore(
+          history.data.walks.length >= HISTORY_PAGE_SIZE &&
+            nextOffset.current < history.data.total,
+        );
+        setNeedsCount(
+          needsOnly ? history.data.total : pending?.ok ? pending.data.total : null,
+        );
         setFailure(null);
         setPhase("ready");
         return;
@@ -89,26 +106,39 @@ export default function WalkHistoryScreen() {
 
   useEffect(() => {
     seenVersion.current = getHistoryVersion();
-    void loadFirstPage("initial");
+    void loadFirstPage(filter, "initial");
     return () => {
       sequence.current += 1;
     };
-  }, [loadFirstPage]);
+  }, [filter, loadFirstPage]);
 
   // 인계나 메모를 저장하고 돌아오면 첫 페이지부터 새로 불러온다.
+  // 레벨 평가가 끝나지 않았던 산책이 있으면 결과를 다시 확인하고, 새 레벨업이 있으면 6-3으로 간다.
   useFocusEffect(
     useCallback(() => {
-      if (seenVersion.current === getHistoryVersion()) return;
-      seenVersion.current = getHistoryVersion();
-      void loadFirstPage("initial");
-    }, [loadFirstPage]),
+      if (seenVersion.current !== getHistoryVersion()) {
+        seenVersion.current = getHistoryVersion();
+        void loadFirstPage(filter, "initial");
+      }
+      let active = true;
+      void checkPendingLevelUps().then((show) => {
+        if (active && show) router.push("/6-3");
+      });
+      return () => {
+        active = false;
+      };
+    }, [filter, loadFirstPage, router]),
   );
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
     const current = sequence.current;
     setLoadingMore(true);
-    const result = await fetchWalkHistory(HISTORY_PAGE_SIZE, nextOffset.current);
+    const result = await fetchWalkHistory(
+      HISTORY_PAGE_SIZE,
+      nextOffset.current,
+      filter === "NEEDS_HANDOVER" ? "NOT_CONFIRMED" : undefined,
+    );
     setLoadingMore(false);
     if (current !== sequence.current) return;
     if (!result.ok) {
@@ -117,11 +147,14 @@ export default function WalkHistoryScreen() {
     }
     setFailure(null);
     nextOffset.current += result.data.walks.length;
+    totalCount.current = result.data.total;
     setItems((previous) => mergeById(previous, result.data.walks));
-    setHasMore(result.data.walks.length >= HISTORY_PAGE_SIZE);
+    setHasMore(
+      result.data.walks.length >= HISTORY_PAGE_SIZE && nextOffset.current < result.data.total,
+    );
   };
 
-  const totalCount = volunteer ? `${volunteer.total_walk_count}회` : "-";
+  const walkCountText = volunteer ? `${volunteer.total_walk_count}회` : "-";
   const totalDistance = volunteer ? `${formatKm(volunteer.total_distance_m)} km` : "-";
 
   return (
@@ -130,7 +163,7 @@ export default function WalkHistoryScreen() {
       contentContainerStyle={styles.scrollContent}
       refreshControl={
         <RefreshControl
-          onRefresh={() => void loadFirstPage("refresh")}
+          onRefresh={() => void loadFirstPage(filter, "refresh")}
           refreshing={refreshing}
           tintColor={colors.brown2}
         />
@@ -154,11 +187,33 @@ export default function WalkHistoryScreen() {
       <View style={styles.body}>
         <Text style={styles.title}>함께 걸은 순간들</Text>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryNumbers}>{totalCount}        {totalDistance}</Text>
+          <Text style={styles.summaryNumbers}>{walkCountText}        {totalDistance}</Text>
           <Text style={styles.summaryLabels}>총 산책                    총 거리</Text>
         </View>
 
         <Text style={styles.recentTitle}>최근 산책</Text>
+        {(needsCount ?? 0) > 0 || filter === "NEEDS_HANDOVER" ? (
+          <View style={styles.filters}>
+            <Pressable
+              accessibilityLabel="전체 산책"
+              accessibilityRole="button"
+              onPress={() => setFilter("ALL")}
+              style={[styles.filter, filter === "ALL" && styles.filterActive]}
+            >
+              <Text style={styles.filterText}>전체</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="인계가 필요한 산책"
+              accessibilityRole="button"
+              onPress={() => setFilter("NEEDS_HANDOVER")}
+              style={[styles.filter, filter === "NEEDS_HANDOVER" && styles.filterActive]}
+            >
+              <Text style={styles.filterText}>
+                인계 필요{needsCount !== null ? ` ${needsCount}` : ""}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.records}>
           {phase === "loading" ? <Text style={styles.stateText}>불러오는 중...</Text> : null}
 
@@ -168,7 +223,7 @@ export default function WalkHistoryScreen() {
               <Pressable
                 accessibilityLabel="다시 시도"
                 accessibilityRole="button"
-                onPress={() => void loadFirstPage("initial")}
+                onPress={() => void loadFirstPage(filter, "initial")}
                 style={styles.retryButton}
               >
                 <Text style={styles.retryText}>다시 시도</Text>
@@ -177,7 +232,11 @@ export default function WalkHistoryScreen() {
           ) : null}
 
           {phase === "ready" && items.length === 0 ? (
-            <Text style={styles.stateText}>아직 산책 기록이 없어요.</Text>
+            <Text style={styles.stateText}>
+              {filter === "NEEDS_HANDOVER"
+                ? "인계가 필요한 산책이 없어요."
+                : "아직 산책 기록이 없어요."}
+            </Text>
           ) : null}
 
           {phase === "ready"
@@ -188,7 +247,8 @@ export default function WalkHistoryScreen() {
                   key={item.walk_id}
                   onPress={() => {
                     selectHistoryWalk(item);
-                    router.push("/9-2");
+                    // 인계를 아직 접수하지 않은 산책은 바로 인계 화면(6-1)을 연다.
+                    router.push(item.handover_status === "NOT_CONFIRMED" ? "/6-1" : "/9-2");
                   }}
                   style={styles.recordCard}
                 >
@@ -292,6 +352,27 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.nanumSquareRoundBold,
     fontSize: 19,
     marginTop: 20,
+  },
+  filters: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  filter: {
+    alignItems: "center",
+    backgroundColor: colors.cream,
+    borderRadius: 25,
+    height: 26,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  filterActive: {
+    backgroundColor: colors.lightOrange,
+  },
+  filterText: {
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: typography.fontSizes.small,
   },
   records: { gap: 12, marginTop: 12 },
   recordCard: {
