@@ -68,3 +68,18 @@ export const gradientPaw: GradientToken = {
   end: { x: 0, y: 1 },
   radius: 0,
 };
+
+// 마이페이지 요약 카드(아래쪽 #FFE4C0에서 위쪽 투명하게). Figma 10-1.
+export const gradientMyPageSummary: GradientToken = {
+  colors: ["rgba(253,238,201,0.39)", "#FFE4C0"],
+  locations: [0, 1],
+  start: { x: 0, y: 0 },
+  end: { x: 0, y: 1 },
+  radius: 24,
+};
+
+// 마이페이지 메뉴 아이콘 배지. Figma 10-1.
+export const gradientMyPageBadge: GradientToken = {
+  ...gradientCardCream,
+  radius: 13,
+};

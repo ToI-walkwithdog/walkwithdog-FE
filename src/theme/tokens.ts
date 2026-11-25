@@ -13,6 +13,7 @@ export const colors = {
   deepOrange: "#FF9D30",
   lightOrange: "#F7C27A",
   midLightOrange: "#FFBA5D",
+  outer: "#F0E8DC",
   outer2: "#E4D5BF",
   cream: "#FDF3E7",
   onboardingGlowGold: "#F7B327",
@@ -134,6 +135,13 @@ export const shadows = {
     blurRadius: 12,
     spreadRadius: 0,
     color: "rgba(107, 71, 33, 0.16)",
+  },
+  myPageCard: {
+    offsetX: 0,
+    offsetY: 6,
+    blurRadius: 8,
+    spreadRadius: 0,
+    color: "rgba(132, 82, 26, 0.05)",
   },
 } as const;
 

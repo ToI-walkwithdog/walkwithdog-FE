@@ -86,6 +86,14 @@ const MESSAGES: Record<string, string> = {
   WALK_REQUEST_RETRYABLE: RETRY_LATER,
   WALK_REQUEST_CONFLICT:
     "이미 신청했거나 시간이 겹치는 예약이 있어요. 내 예약을 확인해 주세요.",
+
+  // 8-x 내 예약, 취소
+  RESERVATION_FILTER_CONFLICT: RETRY_LATER,
+  REQUEST_ALREADY_CANCELLED: "이미 취소된 예약이에요.",
+  REQUEST_STATE_CONFLICT: "지금 상태에서는 예약을 취소할 수 없어요.",
+  CANCEL_TIME_EXPIRED: "예약 시작 시간이 되어 취소할 수 없어요.",
+  WALK_RECORD_EXISTS: "산책이 이미 시작되어 취소할 수 없어요.",
+  REQUEST_LOCK_CONFLICT: "다른 작업과 겹쳤어요. 잠시 후 다시 시도해 주세요.",
 };
 
 export function errorMessage(code: string | null | undefined): string {

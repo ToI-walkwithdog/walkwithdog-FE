@@ -1,21 +1,73 @@
+import type { ReactNode } from "react";
 import { useRouter } from "expo-router";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Icon } from "../../components/Icon";
+import { Icon, type IconName } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
+import { GradientView } from "../../components/GradientView";
 import { useMockSession } from "../../context/MockSession";
-import { colors, radii, typography } from "../../theme/tokens";
+import { gradientMyPageBadge, gradientMyPageSummary } from "../../theme/gradients";
+import { colors, shadows } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
+
+type MenuRow = {
+  label: string;
+  detail?: string;
+  icon: IconName;
+  onPress: () => void;
+};
+
+// 시안(Figma 10-1)처럼 섹션마다 흰 카드 하나에 행을 담고, 행 사이에는 구분선을 둔다.
+function MenuCard({ rows, footer }: { rows: MenuRow[]; footer?: ReactNode }) {
+  return (
+    <View style={styles.menuCard}>
+      {rows.map((row, index) => {
+        const hasDivider = index < rows.length - 1 || footer !== undefined;
+        return (
+          <Pressable
+            accessibilityLabel={row.label}
+            accessibilityRole="button"
+            key={row.label}
+            onPress={row.onPress}
+            style={[styles.menuRow, row.detail ? styles.menuRowTall : null]}
+          >
+            <GradientView token={gradientMyPageBadge} style={styles.iconBadge}>
+              <Icon name={row.icon} size={20} width={20} height={20} color={colors.brown} />
+            </GradientView>
+            <View style={styles.menuText}>
+              <Text style={styles.menuLabel}>{row.label}</Text>
+              {row.detail ? <Text style={styles.menuDetail}>{row.detail}</Text> : null}
+            </View>
+            <Icon name="vector-next" size={26} width={6.9} height={11.84} color={colors.brown2} />
+            {hasDivider ? <View style={styles.rowDivider} /> : null}
+          </Pressable>
+        );
+      })}
+      {footer}
+    </View>
+  );
+}
 
 export default function MyPageScreen() {
   const router = useRouter();
   const { profile, records, resetSession } = useMockSession();
   const distance = records.reduce((sum, record) => sum + record.distanceMeters, 0) / 1000;
 
-  const menuItems = [
-    { label: "내 정보 수정", detail: "닉네임 · 프로필 사진 · 전화번호", icon: "icon-user" as const, route: "/10-2" },
-    { label: "산책 선호 설정", detail: "산책 지역 · 강아지 크기", icon: "icon-tune" as const, route: "/10-3" },
-  ];
+  const comingSoon = (title: string) => () =>
+    Alert.alert(title, "아직 준비 중인 기능이에요.");
+
+  const logout = () =>
+    Alert.alert("로그아웃", "앱에 임시 저장된 목업 데이터가 초기화돼요.", [
+      { text: "취소", style: "cancel" },
+      {
+        text: "로그아웃",
+        onPress: () => {
+          resetSession();
+          router.dismissAll();
+          router.replace("/1-2");
+        },
+      },
+    ]);
 
   return (
     <Screen
@@ -33,124 +85,149 @@ export default function MyPageScreen() {
           onPress={() => router.push("/settings")}
           style={styles.settingsButton}
         >
-          <Icon name="icon-settings" size={24} width={24} height={24} color={colors.brown} />
+          <Icon name="icon-settings" size={22} width={22} height={22} color={colors.brown} />
         </Pressable>
       </View>
-      <View style={styles.profileCard}>
+
+      <View style={styles.profile}>
         <Text style={styles.profileName}>{profile.nickname} 님</Text>
         <View style={styles.levelBadge}>
-          <Icon name="icon-shield" size={16} width={16} height={16} color={colors.brown2} />
+          <Icon name="icon-shield" size={16} width={16} height={16} color={colors.brown3} />
           <Text style={styles.levelText}>산책 레벨 3</Text>
         </View>
-        <View style={styles.statsRow}>
-          <View style={styles.stat}>
+      </View>
+
+      <GradientView token={gradientMyPageSummary} style={styles.summaryCard}>
+        <View style={styles.stat}>
+          <Icon name="icon-dog" size={20} width={20} height={20} color={colors.deepOrange} />
+          <View>
             <Text style={styles.statValue}>{records.length}회</Text>
             <Text style={styles.statLabel}>총 산책</Text>
           </View>
-          <View style={styles.stat}>
+        </View>
+        <View style={styles.stat}>
+          <Icon name="icon-footprints" size={24} width={24} height={24} color={colors.deepOrange} />
+          <View>
             <Text style={styles.statValue}>{distance.toFixed(1)} km</Text>
             <Text style={styles.statLabel}>총 거리</Text>
           </View>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>{new Set(records.map((record) => record.dogId)).size}마리</Text>
+        </View>
+        <View style={styles.stat}>
+          <Icon name="icon-pets" size={18} width={18} height={18} color={colors.deepOrange} />
+          <View>
+            <Text style={styles.statValue}>
+              {new Set(records.map((record) => record.dogId)).size}마리
+            </Text>
             <Text style={styles.statLabel}>함께한 강아지</Text>
           </View>
         </View>
+      </GradientView>
+
+      <View style={styles.sectionInfo}>
+        <Text style={styles.sectionTitle}>내 정보</Text>
+        <MenuCard
+          rows={[
+            {
+              label: "내 정보 수정",
+              detail: "닉네임 · 프로필 사진 · 전화번호",
+              icon: "icon-user",
+              onPress: () => router.push("/10-2"),
+            },
+            {
+              label: "산책 선호 설정",
+              detail: "산책 지역 · 강아지 크기",
+              icon: "icon-tune",
+              onPress: () => router.push("/10-3"),
+            },
+          ]}
+        />
       </View>
 
-      <Text style={styles.sectionTitle}>내 정보</Text>
-      {menuItems.map((item) => (
-        <Pressable
-          accessibilityLabel={item.label}
-          accessibilityRole="button"
-          key={item.label}
-          onPress={() => router.push(item.route)}
-          style={styles.menuItem}
-        >
-          <View style={styles.menuIcon}>
-            <Icon name={item.icon} size={24} width={24} height={24} color={colors.brown} />
-          </View>
-          <View style={styles.menuText}>
-            <Text style={styles.menuLabel}>{item.label}</Text>
-            <Text style={styles.menuDetail}>{item.detail}</Text>
-          </View>
-          <Icon name="vector-next" size={24} width={6.9} height={11.84} color={colors.brown2} />
-        </Pressable>
-      ))}
+      <View style={styles.sectionWalks}>
+        <Text style={styles.sectionTitle}>나의 산책</Text>
+        <MenuCard
+          rows={[
+            {
+              label: "산책 기록",
+              icon: "icon-schedule",
+              onPress: () => router.push("/9-1"),
+            },
+            {
+              label: "예약 내역",
+              icon: "icon-calendar",
+              onPress: () => router.push("/8-1"),
+            },
+          ]}
+        />
+      </View>
 
-      <Text style={styles.sectionTitle}>나의 산책</Text>
-      <Pressable
-        accessibilityLabel="산책 기록"
-        accessibilityRole="button"
-        onPress={() => router.push("/9-1")}
-        style={styles.menuItem}
-      >
-        <View style={styles.menuIcon}>
-          <Icon name="icon-schedule" size={24} width={24} height={24} color={colors.brown} />
-        </View>
-        <Text style={styles.menuLabelOnly}>산책 기록</Text>
-        <Icon name="vector-next" size={24} width={6.9} height={11.84} color={colors.brown2} />
-      </Pressable>
-      <Pressable
-        accessibilityLabel="예약 내역"
-        accessibilityRole="button"
-        onPress={() => router.push("/8-1")}
-        style={styles.menuItem}
-      >
-        <View style={styles.menuIcon}>
-          <Icon name="icon-calendar" size={24} width={24} height={24} color={colors.brown} />
-        </View>
-        <Text style={styles.menuLabelOnly}>예약 내역</Text>
-        <Icon name="vector-next" size={24} width={6.9} height={11.84} color={colors.brown2} />
-      </Pressable>
-
-      <Pressable
-        accessibilityLabel="로그아웃"
-        accessibilityRole="button"
-        onPress={() => Alert.alert("로그아웃", "앱에 임시 저장된 목업 데이터가 초기화돼요.", [
-          { text: "취소", style: "cancel" },
-          { text: "로그아웃", onPress: () => {
-            resetSession();
-            router.dismissAll();
-            router.replace("/1-2");
-          } },
-        ])}
-        style={styles.logoutButton}
-      >
-        <Text style={styles.logoutText}>로그아웃</Text>
-      </Pressable>
+      <View style={styles.sectionOther}>
+        <Text style={styles.sectionTitle}>기타</Text>
+        <MenuCard
+          rows={[
+            {
+              label: "알림 설정",
+              icon: "icon-notifications",
+              onPress: comingSoon("알림 설정"),
+            },
+            {
+              label: "고객센터",
+              icon: "icon-help",
+              onPress: comingSoon("고객센터"),
+            },
+          ]}
+          footer={
+            <Pressable
+              accessibilityLabel="로그아웃"
+              accessibilityRole="button"
+              onPress={logout}
+              style={styles.logoutRow}
+            >
+              <Text style={styles.logoutText}>로그아웃</Text>
+            </Pressable>
+          }
+        />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { paddingBottom: 24 },
+  scrollContent: { paddingBottom: 30 },
   header: {
     alignSelf: "center",
-    height: 82,
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    height: 62,
     width: 375,
   },
   headerTitle: {
     color: colors.brown2,
-    fontFamily: fontFamilies.nanumSquareRoundBold,
-    fontSize: 18,
+    fontFamily: fontFamilies.nanumSquareRoundExtraBold,
+    fontSize: 28,
+    left: 24,
+    lineHeight: 39,
+    position: "absolute",
+    top: 5,
   },
   settingsButton: {
     alignItems: "center",
-    backgroundColor: colors.cream,
-    borderRadius: 25,
-    height: 50,
+    backgroundColor: colors.white,
+    borderRadius: 22,
+    elevation: 2,
+    height: 44,
     justifyContent: "center",
     position: "absolute",
-    right: 20,
-    top: 20,
-    width: 50,
+    right: 24,
+    shadowColor: shadows.myPageCard.color,
+    shadowOffset: { width: shadows.myPageCard.offsetX, height: shadows.myPageCard.offsetY },
+    shadowOpacity: 1,
+    shadowRadius: shadows.myPageCard.blurRadius,
+    top: 0,
+    width: 44,
   },
-  profileCard: {
+  profile: {
     alignSelf: "center",
-    height: 150,
+    height: 56,
+    justifyContent: "center",
     paddingHorizontal: 20,
     width: 375,
   },
@@ -158,95 +235,134 @@ const styles = StyleSheet.create({
     color: colors.brown,
     fontFamily: fontFamilies.nanumSquareRoundExtraBold,
     fontSize: 30,
+    lineHeight: 42,
   },
   levelBadge: {
     alignItems: "center",
-    backgroundColor: colors.cream,
-    borderRadius: 25,
+    backgroundColor: colors.peach,
+    borderRadius: 14,
     flexDirection: "row",
-    height: 30,
-    paddingHorizontal: 8,
+    height: 28,
+    paddingHorizontal: 10,
     position: "absolute",
-    right: 20,
-    top: 8,
+    right: 39,
+    top: 14,
   },
   levelText: {
-    color: colors.brown,
+    color: colors.brown3,
     fontFamily: fontFamilies.nanumSquareRoundBold,
     fontSize: 12,
     marginLeft: 4,
   },
-  statsRow: {
+  summaryCard: {
+    alignSelf: "center",
+    elevation: 2,
     flexDirection: "row",
-    height: 70,
-    marginTop: 18,
+    height: 82,
+    marginBottom: 13,
+    marginHorizontal: 20,
+    paddingHorizontal: 14,
+    shadowColor: shadows.myPageCard.color,
+    shadowOffset: { width: shadows.myPageCard.offsetX, height: shadows.myPageCard.offsetY },
+    shadowOpacity: 1,
+    shadowRadius: shadows.myPageCard.blurRadius,
+    width: 335,
   },
   stat: {
-    alignItems: "center",
+    alignItems: "flex-start",
     flex: 1,
+    flexDirection: "row",
+    gap: 6,
+    paddingTop: 18,
   },
   statValue: {
     color: colors.brown,
-    fontFamily: fontFamilies.nanumSquareRoundExtraBold,
-    fontSize: 18,
-  },
-  statLabel: {
-    color: colors.brown,
-    fontFamily: fontFamilies.nanumSquareRoundRegular,
-    fontSize: 12,
-  },
-  sectionTitle: {
-    alignSelf: "center",
-    color: colors.brown,
     fontFamily: fontFamilies.nanumSquareRoundBold,
     fontSize: 18,
-    marginBottom: 8,
-    width: 335,
+    lineHeight: 25,
   },
-  menuItem: {
-    alignSelf: "center",
+  statLabel: {
+    color: colors.brown3,
+    fontFamily: fontFamilies.nanumSquareRoundRegular,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 7,
+  },
+  // 섹션 사이 간격은 시안의 섹션 높이(208, 190, 238)를 그대로 따른다.
+  sectionInfo: { alignSelf: "center", height: 208, width: 375 },
+  sectionWalks: { alignSelf: "center", height: 190, width: 375 },
+  sectionOther: { alignSelf: "center", height: 238, width: 375 },
+  sectionTitle: {
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: 16,
+    left: 24,
+    lineHeight: 22,
+    position: "absolute",
+    top: 4,
+  },
+  menuCard: {
+    backgroundColor: colors.white,
+    borderRadius: 24,
+    elevation: 2,
+    left: 20,
+    padding: 6,
+    position: "absolute",
+    right: 20,
+    shadowColor: shadows.myPageCard.color,
+    shadowOffset: { width: shadows.myPageCard.offsetX, height: shadows.myPageCard.offsetY },
+    shadowOpacity: 1,
+    shadowRadius: shadows.myPageCard.blurRadius,
+    top: 29,
+  },
+  menuRow: {
     alignItems: "center",
-    borderBottomColor: "#F0E8DC",
-    borderBottomWidth: 1,
     flexDirection: "row",
-    height: 72,
-    width: 335,
+    height: 62,
+    paddingLeft: 8,
+    paddingRight: 12,
   },
-  menuIcon: {
+  menuRowTall: { height: 78 },
+  iconBadge: {
     alignItems: "center",
-    height: 24,
+    height: 38,
     justifyContent: "center",
-    width: 24,
+    width: 38,
   },
   menuText: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 14,
   },
   menuLabel: {
     color: colors.brown,
     fontFamily: fontFamilies.nanumSquareRoundBold,
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 21,
   },
   menuDetail: {
-    color: colors.brown2,
+    color: colors.brown3,
     fontFamily: fontFamilies.nanumSquareRoundRegular,
-    fontSize: 12,
+    fontSize: 10.5,
+    lineHeight: 15,
+    marginTop: 0,
   },
-  menuLabelOnly: {
-    color: colors.brown,
-    flex: 1,
-    fontFamily: fontFamilies.nanumSquareRoundBold,
-    fontSize: 16,
-    marginLeft: 12,
+  rowDivider: {
+    backgroundColor: colors.outer,
+    bottom: 0,
+    height: 1,
+    left: 60,
+    position: "absolute",
+    right: 16,
   },
-  logoutButton: {
-    alignSelf: "center",
+  logoutRow: {
     alignItems: "center",
-    marginTop: 24,
+    height: 62,
+    justifyContent: "center",
   },
   logoutText: {
-    color: colors.mildBrown,
-    fontFamily: fontFamilies.nanumSquareRoundBold,
-    fontSize: 16,
+    color: colors.brown3,
+    fontFamily: fontFamilies.nanumSquareRoundRegular,
+    fontSize: 15,
+    lineHeight: 21,
   },
 });

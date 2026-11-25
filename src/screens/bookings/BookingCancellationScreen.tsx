@@ -1,19 +1,33 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { routeForFailure } from "../../api/auth";
+import { CANCEL_REASONS, type CancelReasonCode } from "../../api/bookingCodes";
+import type { ApiFailure } from "../../api/client";
+import { errorMessage } from "../../api/errorMessages";
+import { bookingFailureMessage, routeForBooking } from "../../api/myBookings";
+import { cancelWalkRequest, fetchWalkRequestDetail } from "../../api/walkRequests";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
-import { useMockSession } from "../../context/MockSession";
-import { availableBookings } from "../../data/availableBookings";
-import { dogs } from "../../data/dogs";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
+import { dogImageSource } from "../../utils/dogImage";
+import { formatSlotDate, formatSlotTime } from "../../utils/kst";
+import { BookingLoadState } from "./BookingLoadState";
+import { useBookingDetail } from "./useBookingDetail";
 
 export type BookingCancellationScreenState =
   | "requested"
   | "confirmation"
   | "cancelled";
+
+const DEFAULT_REASON: CancelReasonCode = "SCHEDULE_CHANGED";
+
+function reasonLabel(code: CancelReasonCode | null): string {
+  return CANCEL_REASONS.find((item) => item.code === code)?.label ?? "선택 안 함";
+}
 
 export function BookingCancellationScreen({
   state,
@@ -21,23 +35,121 @@ export function BookingCancellationScreen({
   state: BookingCancellationScreenState;
 }) {
   const router = useRouter();
-  const cancelling = useRef(false);
-  const { selectedBooking, cancelBooking } = useMockSession();
-  const dog = dogs.find((item) => item.id === selectedBooking?.dogId);
-  const option = availableBookings.find((item) => item.dogId === selectedBooking?.dogId);
-  if (!selectedBooking || !dog || !option) throw new Error("Selected booking is unavailable.");
-  const [reason, setReason] = useState("일정이 변경되었어요");
+  const { state: loaded, reload } = useBookingDetail();
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [reason, setReason] = useState<CancelReasonCode | null>(DEFAULT_REASON);
 
   const isConfirmation = state === "confirmation";
   const isCancelled = state === "cancelled";
+  const testId = isCancelled ? "screen-8-8" : isConfirmation ? "screen-8-7" : "screen-8-6";
+  const detail = loaded.phase === "ready" ? loaded.detail : null;
+
+  // 서버의 현재 상태와 맞지 않는 화면이면 맞는 화면으로 보낸다.
+  const redirect =
+    detail === null
+      ? null
+      : isCancelled
+        ? detail.status === "CANCELLED"
+          ? null
+          : routeForBooking(detail.display_status)
+        : detail.status === "CANCELLED"
+          ? "/8-8"
+          : !detail.actions.can_cancel
+            ? routeForBooking(detail.display_status)
+            : null;
+
+  const notifiedRef = useRef(false);
+  useEffect(() => {
+    if (!redirect) return;
+    // 취소할 수 없는 예약이 8-6, 8-7로 들어온 경우에만 이유를 알려 준다.
+    if (!isCancelled && redirect !== "/8-8" && !notifiedRef.current) {
+      notifiedRef.current = true;
+      Alert.alert("알림", errorMessage("REQUEST_STATE_CONFLICT"));
+    }
+    router.replace(redirect);
+  }, [isCancelled, redirect, router]);
+
+  if (!detail || redirect) {
+    return (
+      <BookingLoadState
+        failure={loaded.phase === "error" ? loaded.failure : null}
+        onRetry={() => void reload()}
+        testID={testId}
+      />
+    );
+  }
+
+  const source = dogImageSource(detail.dog.image_url);
+  const shelterName = detail.shelter?.name ?? detail.shelter_name ?? "";
+  const backRoute = routeForBooking(detail.display_status);
+
+  // 취소 결과가 불확실하거나 상태가 달라졌을 때 서버의 현재 상태로 이동한다.
+  const goToCurrentState = async () => {
+    const current = await fetchWalkRequestDetail(detail.id);
+    router.replace(current.ok ? routeForBooking(current.data.display_status) : "/8-1");
+  };
+
+  const handleFailure = async (failure: ApiFailure) => {
+    const route = await routeForFailure(failure);
+    if (route) {
+      router.replace(route);
+      return;
+    }
+    setSheetOpen(false);
+    switch (failure.code) {
+      case "REQUEST_ALREADY_CANCELLED":
+        Alert.alert("알림", errorMessage(failure.code), [
+          { text: "확인", onPress: () => router.replace("/8-8") },
+        ]);
+        return;
+      case "REQUEST_STATE_CONFLICT":
+      case "CANCEL_TIME_EXPIRED":
+      case "WALK_RECORD_EXISTS":
+        Alert.alert("알림", errorMessage(failure.code), [
+          { text: "확인", onPress: () => void goToCurrentState() },
+        ]);
+        return;
+    }
+    if (failure.code === null && (failure.status === 404 || failure.status === 403)) {
+      Alert.alert("알림", bookingFailureMessage(failure), [
+        { text: "확인", onPress: () => router.replace("/8-1") },
+      ]);
+      return;
+    }
+    // 네트워크 오류, 시간 초과, REQUEST_LOCK_CONFLICT는 서버에서 취소됐을 수도 있다. 상태를 먼저 확인한다.
+    const current = await fetchWalkRequestDetail(detail.id);
+    if (current.ok && current.data.status === "CANCELLED") {
+      router.replace("/8-8");
+      return;
+    }
+    Alert.alert("알림", errorMessage(failure.code));
+  };
+
+  const submit = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      const result = await cancelWalkRequest(detail.id, reason);
+      if (result.ok) {
+        setSheetOpen(false);
+        router.replace("/8-8");
+        return;
+      }
+      await handleFailure(result);
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
 
   return (
     <Screen
       backgroundColor={colors.white}
       safeAreaEdges={[]}
-      testID={
-        isCancelled ? "screen-8-8" : isConfirmation ? "screen-8-7" : "screen-8-6"
-      }
+      testID={testId}
     >
       <View style={styles.root}>
         {!isCancelled ? (
@@ -45,7 +157,7 @@ export function BookingCancellationScreen({
             <Pressable
               accessibilityLabel="뒤로"
               accessibilityRole="button"
-              onPress={() => router.replace("/8-3")}
+              onPress={() => router.replace(backRoute)}
               style={styles.backButton}
             >
               <Icon
@@ -67,17 +179,27 @@ export function BookingCancellationScreen({
 
           <View style={styles.bookingCard}>
             <View style={styles.dogRow}>
-              <Image
-                accessible={false}
-                resizeMode="cover"
-                source={dog.image}
-                style={styles.dogImage}
-              />
+              {source ? (
+                <Image
+                  accessible={false}
+                  resizeMode="cover"
+                  source={source}
+                  style={styles.dogImage}
+                />
+              ) : (
+                <View style={[styles.dogImage, styles.dogImageEmpty]}>
+                  <Icon
+                    name="icon-dog"
+                    size={28}
+                    width={28}
+                    height={28}
+                    color={colors.brown2}
+                  />
+                </View>
+              )}
               <View style={styles.dogInfo}>
-                <Text style={styles.dogName}>{dog.name}</Text>
-                <Text style={styles.shelterName}>
-                  {option.shelterName}
-                </Text>
+                <Text style={styles.dogName}>{detail.dog.name}</Text>
+                <Text style={styles.shelterName}>{shelterName}</Text>
               </View>
               {isCancelled ? (
                 <View style={styles.statusBadge}>
@@ -86,7 +208,8 @@ export function BookingCancellationScreen({
               ) : null}
             </View>
             <Text style={styles.schedule}>
-              {selectedBooking.schedule.date} · {selectedBooking.schedule.time}
+              {formatSlotDate(detail.requested_start_at)} ·{" "}
+              {formatSlotTime(detail.requested_start_at, detail.requested_end_at)}
             </Text>
           </View>
 
@@ -94,22 +217,24 @@ export function BookingCancellationScreen({
             <>
               <View style={styles.noticeCard}>
                 <Text style={styles.noticeText}>
-                  목업 취소는 앱에만 반영되며 보호소에 전달되지 않아요.
+                  취소한 예약은 되돌릴 수 없어요. 필요하면 다시 신청해 주세요.
                 </Text>
               </View>
               <Pressable
                 accessibilityLabel="취소 사유"
                 accessibilityRole="button"
+                disabled={submitting}
                 onPress={() => Alert.alert("취소 사유", "사유를 선택해 주세요.", [
-                  { text: "일정이 변경되었어요", onPress: () => setReason("일정이 변경되었어요") },
-                  { text: "방문이 어려워요", onPress: () => setReason("방문이 어려워요") },
-                  { text: "선택 안 함", onPress: () => setReason("선택 안 함") },
-                  { text: "닫기", style: "cancel" },
+                  ...CANCEL_REASONS.map((item) => ({
+                    text: item.label,
+                    onPress: () => setReason(item.code),
+                  })),
+                  { text: "닫기", style: "cancel" as const },
                 ])}
                 style={styles.reasonCard}
               >
                 <Text style={styles.reasonTitle}>취소 사유 (선택)</Text>
-                <Text style={styles.reasonText}>{reason}  ▾</Text>
+                <Text style={styles.reasonText}>{reasonLabel(reason)}  ▾</Text>
               </Pressable>
               <Text style={styles.helpText}>
                 방문이 어렵다면 미리 알려 주세요.{"\n"}
@@ -120,7 +245,7 @@ export function BookingCancellationScreen({
             <View style={styles.noticeCard}>
               <Text style={styles.noticeText}>
                 {isCancelled
-                  ? "취소 내용이 앱에만 반영되었어요. 보호소에는 전달되지 않았어요."
+                  ? "예약이 취소되었어요. 다른 일정으로 다시 신청할 수 있어요."
                   : "예약 취소 전 보호소 일정과 산책 준비 사항을 확인해 주세요."}
               </Text>
             </View>
@@ -142,17 +267,10 @@ export function BookingCancellationScreen({
               <Pressable
                 accessibilityLabel={isConfirmation ? "예약 취소하기" : "예약 취소 진행"}
                 accessibilityRole="button"
+                disabled={submitting}
                 onPress={() => {
-                  if (isConfirmation) {
-                    if (cancelling.current) return;
-                    if (selectedBooking.status !== "confirmed") {
-                      Alert.alert("취소할 수 없어요", "이미 취소되었거나 확정되지 않은 예약이에요.");
-                      return;
-                    }
-                    cancelling.current = true;
-                    cancelBooking();
-                  }
-                  router.replace(isConfirmation ? "/8-8" : "/8-7");
+                  if (isConfirmation) setSheetOpen(true);
+                  else router.replace("/8-7");
                 }}
                 style={styles.primaryAction}
               >
@@ -163,7 +281,8 @@ export function BookingCancellationScreen({
               <Pressable
                 accessibilityLabel="예약 유지하기"
                 accessibilityRole="button"
-                onPress={() => router.replace("/8-3")}
+                disabled={submitting}
+                onPress={() => router.replace(backRoute)}
                 style={styles.secondaryAction}
               >
                 <Text style={styles.secondaryActionText}>예약 유지하기</Text>
@@ -171,6 +290,44 @@ export function BookingCancellationScreen({
             </>
           )}
         </View>
+
+        <BottomSheet
+          height={250}
+          onClose={() => {
+            if (!submitting) setSheetOpen(false);
+          }}
+          title="정말 취소할까요?"
+          visible={sheetOpen}
+        >
+          <View style={styles.sheetBody}>
+            <Text style={styles.sheetText}>
+              {detail.dog.name}와의 {formatSlotDate(detail.requested_start_at)}{" "}
+              {formatSlotTime(detail.requested_start_at, detail.requested_end_at)} 산책 예약을
+              취소해요.
+            </Text>
+            <Pressable
+              accessibilityLabel="예약 취소 확인"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: submitting }}
+              disabled={submitting}
+              onPress={() => void submit()}
+              style={[styles.primaryAction, submitting && styles.disabledAction]}
+            >
+              <Text style={styles.primaryActionText}>
+                {submitting ? "취소하는 중..." : "예약 취소하기"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="예약 유지하기"
+              accessibilityRole="button"
+              disabled={submitting}
+              onPress={() => setSheetOpen(false)}
+              style={styles.secondaryAction}
+            >
+              <Text style={styles.secondaryActionText}>예약 유지하기</Text>
+            </Pressable>
+          </View>
+        </BottomSheet>
       </View>
     </Screen>
   );
@@ -238,6 +395,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     height: 72,
     width: 64,
+  },
+  dogImageEmpty: {
+    alignItems: "center",
+    backgroundColor: colors.cream,
+    justifyContent: "center",
   },
   dogInfo: { flex: 1, marginLeft: 12 },
   dogName: {
@@ -314,6 +476,9 @@ const styles = StyleSheet.create({
     height: 49,
     justifyContent: "center",
   },
+  disabledAction: {
+    opacity: 0.5,
+  },
   primaryActionText: {
     color: colors.brown,
     fontFamily: fontFamilies.nanumSquareRoundBold,
@@ -331,5 +496,16 @@ const styles = StyleSheet.create({
     color: colors.brown,
     fontFamily: fontFamilies.nanumSquareRoundBold,
     fontSize: typography.fontSizes.mediumTitle,
+  },
+  sheetBody: {
+    alignSelf: "center",
+    width: 335,
+  },
+  sheetText: {
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundRegular,
+    fontSize: 14,
+    lineHeight: 20.3,
+    marginBottom: 16,
   },
 });

@@ -42,3 +42,26 @@ export const HOME_STATUS_LABELS: Record<ReservationDisplayStatus, string> = {
   CANCELLED: "취소 완료",
   COMPLETED: "산책 완료",
 };
+
+export type CancelReasonCode = "SCHEDULE_CHANGED" | "CANNOT_VISIT";
+
+// 취소 사유 선택지. code가 null이면 사유를 보내지 않는다.
+export const CANCEL_REASONS: { code: CancelReasonCode | null; label: string }[] = [
+  { code: "SCHEDULE_CHANGED", label: "일정이 변경되었어요" },
+  { code: "CANNOT_VISIT", label: "방문이 어려워요" },
+  { code: null, label: "선택 안 함" },
+];
+
+// 내 예약(8-x) 목록 카드의 안내 문구. 상태 라벨은 HOME_STATUS_LABELS를 같이 쓴다.
+export const MY_BOOKING_DESCRIPTIONS: Record<ReservationDisplayStatus, string> = {
+  APPROVED: "보호소 코드를 입력하고 출발해요!",
+  PENDING: "보호소의 확인을 기다리고 있어요.",
+  REJECTED: "거절 사유를 확인해 주세요!",
+  CANCELLED: "취소한 예약이에요.",
+  COMPLETED: "산책을 마친 예약이에요.",
+};
+
+// 사용자가 아닌 쪽(보호소, 관리자)이 취소한 예약은 문구를 달리한다.
+export function cancelledBySomeoneElse(role: string | null | undefined): boolean {
+  return role === "SHELTER" || role === "ADMIN";
+}

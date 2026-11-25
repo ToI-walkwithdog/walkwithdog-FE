@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
+  type RefreshControlProps,
   StyleSheet,
   type StyleProp,
   type ViewStyle,
@@ -23,6 +24,8 @@ type ScreenProps = {
   safeAreaEdges?: Array<"top" | "right" | "bottom" | "left">;
   contentContainerStyle?: StyleProp<ViewStyle>;
   dismissKeyboardOnTap?: boolean;
+  // 당겨서 새로고침. scroll일 때만 쓴다.
+  refreshControl?: ReactElement<RefreshControlProps>;
   testID?: string;
 };
 
@@ -35,6 +38,7 @@ export function Screen({
   safeAreaEdges = ["top", "right", "bottom", "left"],
   contentContainerStyle,
   dismissKeyboardOnTap = true,
+  refreshControl,
   testID,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
@@ -48,6 +52,7 @@ export function Screen({
       ]}
       keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
       keyboardShouldPersistTaps="handled"
+      refreshControl={refreshControl}
     >
       {children}
     </ScrollView>
