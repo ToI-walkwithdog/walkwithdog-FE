@@ -9,6 +9,9 @@ import { ScheduleFormPage, SchedulesPage } from "./pages/SchedulesPage";
 import { SettingsPage, VerificationPage } from "./pages/SettingsPage";
 import { PageLayout } from "./components/PageLayout";
 
+// 로그인 없이 목업을 보는 버튼은 개발 서버에서 VITE_ALLOW_DEMO_PREVIEW=true일 때만 보인다.
+const previewEnabled = import.meta.env.DEV && import.meta.env.VITE_ALLOW_DEMO_PREVIEW === "true";
+
 export function App() {
   const [hash, setHash] = useState(() => window.location.hash);
 
@@ -20,7 +23,7 @@ export function App() {
 
   const parts = hash.replace(/^#/, "").split("/");
   const [page, action, id] = parts;
-  if ((!page || page === "login") && parts.length === 1) return <LoginPage onPreview={() => { window.location.hash = "dashboard"; }} />;
+  if ((!page || page === "login") && parts.length === 1) return <LoginPage onSignedIn={() => { window.location.hash = "dashboard"; }} onPreview={previewEnabled ? () => { window.location.hash = "dashboard"; } : undefined} />;
   if (page === "dashboard" && parts.length === 1) return <DashboardPage onExit={() => { window.location.hash = ""; }} />;
   if (page === "verification" && parts.length === 1) return <VerificationPage />;
   if (page === "dogs" && parts.length === 1) return <DogsPage />;
