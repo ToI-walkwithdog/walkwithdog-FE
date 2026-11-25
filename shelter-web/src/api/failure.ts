@@ -15,7 +15,8 @@ export function failureText(failure: ApiFailure, serverText = false): string {
   return errorMessage(failure.code);
 }
 
-// 422의 detail 목록({loc, msg})을 입력칸 이름별 문구로 바꾼다. loc의 마지막 값을 칸 이름으로 쓴다.
+// 422의 detail 목록({loc, msg})을 입력칸 이름별 문구로 바꾼다. loc에서 "body" 다음 값을 칸 이름으로 쓴다
+// (slots의 안쪽 오류는 모두 "slots"로 모인다).
 export function fieldErrors(failure: ApiFailure): Record<string, string> {
   const result: Record<string, string> = {};
   if (failure.status !== 422 || !Array.isArray(failure.data)) return result;
@@ -23,8 +24,9 @@ export function fieldErrors(failure: ApiFailure): Record<string, string> {
     if (typeof item !== "object" || item === null) continue;
     const loc: unknown = (item as { loc?: unknown }).loc;
     const msg: unknown = (item as { msg?: unknown }).msg;
-    if (!Array.isArray(loc) || loc.length === 0) continue;
-    const field = String(loc[loc.length - 1]);
+    if (!Array.isArray(loc)) continue;
+    const field = loc.find((part) => typeof part === "string" && part !== "body" && part !== "query" && part !== "path");
+    if (typeof field !== "string") continue;
     if (!(field in result)) result[field] = typeof msg === "string" ? `값을 확인해 주세요. (${msg})` : "값을 확인해 주세요.";
   }
   return result;

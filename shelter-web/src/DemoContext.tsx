@@ -7,8 +7,6 @@ import {
 
 type DemoContextValue = {
   dogs: DemoDog[];
-  saveDog: (dog: DemoDog) => void;
-  toggleDog: (id: string) => void;
   schedules: DemoSchedule[];
   addSchedule: (schedule: DemoSchedule) => void;
   toggleSchedule: (id: string) => void;
@@ -24,22 +22,15 @@ type DemoContextValue = {
 const DemoContext = createContext<DemoContextValue | null>(null);
 
 export function DemoProvider({ children }: { children: ReactNode }) {
-  const [dogs, setDogs] = useState(initialDogs);
+  const [dogs] = useState(initialDogs);
   const [schedules, setSchedules] = useState(initialSchedules);
   const [bookings, setBookings] = useState(initialBookings);
   const [reports, setReports] = useState(initialReports);
   const [walks, setWalks] = useState(initialWalks);
 
-  const saveDog = (dog: DemoDog) => setDogs((current) =>
-    current.some((item) => item.id === dog.id)
-      ? current.map((item) => item.id === dog.id ? dog : item)
-      : [...current, dog],
-  );
-
   return (
     <DemoContext.Provider value={{
-      dogs, saveDog,
-      toggleDog: (id) => setDogs((current) => current.map((dog) => dog.id === id ? { ...dog, active: !dog.active } : dog)),
+      dogs,
       schedules, addSchedule: (schedule) => setSchedules((current) => [...current, schedule]),
       toggleSchedule: (id) => setSchedules((current) => current.map((schedule) => schedule.id === id ? { ...schedule, active: !schedule.active } : schedule)),
       bookings, updateBooking: (id, status) => setBookings((current) => current.map((booking) => booking.id === id ? { ...booking, status } : booking)),

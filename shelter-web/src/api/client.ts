@@ -6,6 +6,13 @@ const TIMEOUT_MS = 10_000;
 
 export const API_BASE_URL = BASE_URL;
 
+// 서버가 돌려주는 상대 경로(/media/...)를 이미지 주소로 바꾼다. 이미 완전한 주소면 그대로 쓴다.
+export function mediaUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//.test(path)) return path;
+  return `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 export type ApiSuccess<T> = { ok: true; status: number; data: T };
 export type ApiFailure = {
   ok: false;
@@ -110,7 +117,9 @@ async function request<T>(
       Accept: "application/json",
       ...headers,
     };
-    if (body !== undefined) {
+    // FormData(multipart)는 브라우저가 boundary가 든 Content-Type을 직접 붙이므로 헤더를 지정하지 않는다.
+    const isForm = body instanceof FormData;
+    if (body !== undefined && !isForm) {
       requestHeaders["Content-Type"] = "application/json";
     }
     if (auth) {
@@ -121,7 +130,7 @@ async function request<T>(
     const response = await fetch(`${BASE_URL}${path}`, {
       method,
       headers: requestHeaders,
-      body: body === undefined ? null : JSON.stringify(body),
+      body: body === undefined ? null : isForm ? body : JSON.stringify(body),
       signal: controller.signal,
     });
 

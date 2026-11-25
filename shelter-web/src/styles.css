@@ -461,3 +461,7 @@ h1, h2, h3, p, dl, dd { margin: 0; }
 .evaluation-form { display: grid; gap: 10px; margin-top: 20px; }
 
 .header-actions { display: flex; align-items: center; gap: 14px; }
+.slot-rows { display: grid; gap: 12px; }
+.slot-row { display: grid; gap: 10px; padding: 12px; border: 1px solid #eeeeee; border-radius: 8px; }
+.slot-row .field-hint { margin-top: 0; }
+.form-card .field-error { margin-top: -8px; color: #9b2828; font-size: 12px; line-height: 1.5; }
