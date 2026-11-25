@@ -8,8 +8,6 @@ import {
 type DemoContextValue = {
   dogs: DemoDog[];
   schedules: DemoSchedule[];
-  addSchedule: (schedule: DemoSchedule) => void;
-  toggleSchedule: (id: string) => void;
   bookings: DemoBooking[];
   updateBooking: (id: string, status: DemoBooking["status"]) => void;
   reports: DemoReport[];
@@ -23,7 +21,7 @@ const DemoContext = createContext<DemoContextValue | null>(null);
 
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [dogs] = useState(initialDogs);
-  const [schedules, setSchedules] = useState(initialSchedules);
+  const [schedules] = useState(initialSchedules);
   const [bookings, setBookings] = useState(initialBookings);
   const [reports, setReports] = useState(initialReports);
   const [walks, setWalks] = useState(initialWalks);
@@ -31,8 +29,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   return (
     <DemoContext.Provider value={{
       dogs,
-      schedules, addSchedule: (schedule) => setSchedules((current) => [...current, schedule]),
-      toggleSchedule: (id) => setSchedules((current) => current.map((schedule) => schedule.id === id ? { ...schedule, active: !schedule.active } : schedule)),
+      schedules,
       bookings, updateBooking: (id, status) => setBookings((current) => current.map((booking) => booking.id === id ? { ...booking, status } : booking)),
       reports, addReport: (report) => setReports((current) => [report, ...current]),
       reviewReport: (id) => setReports((current) => current.map((report) => report.id === id ? { ...report, reviewed: true } : report)),

@@ -10,6 +10,13 @@ export function failureText(failure: ApiFailure, serverText = false): string {
   if (failure.status === 401) return errorMessage("SESSION_EXPIRED");
   if (failure.status === 403) return "이 보호소의 정보만 다룰 수 있어요.";
   if (serverText && failure.message) return failure.message;
+  if (serverText && Array.isArray(failure.data)) {
+    const texts = failure.data.flatMap((item: unknown) => {
+      const msg = typeof item === "object" && item !== null ? (item as { msg?: unknown }).msg : undefined;
+      return typeof msg === "string" ? [msg] : [];
+    });
+    if (texts.length > 0) return texts.join(" / ");
+  }
   if (failure.status === 409) return LOCK_RETRY;
   if (failure.status === 404) return "찾을 수 없어요. 목록을 새로 불러와 주세요.";
   return errorMessage(failure.code);
