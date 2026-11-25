@@ -98,28 +98,29 @@ export default function MyPageScreen() {
       </View>
 
       <GradientView token={gradientMyPageSummary} style={styles.summaryCard}>
-        <View style={styles.stat}>
-          <Icon name="icon-dog" size={20} width={20} height={20} color={colors.deepOrange} />
-          <View>
+        {/* 각 열은 위 줄(아이콘 + 값, 세로 가운데 정렬)과 아래 줄(라벨)이며 둘 다 열 왼쪽에 붙는다. */}
+        <View style={[styles.stat, styles.statWalks]}>
+          <View style={styles.statValueRow}>
+            <Icon name="icon-dog" size={20} width={20} height={20} color={colors.deepOrange} />
             <Text style={styles.statValue}>{records.length}회</Text>
-            <Text style={styles.statLabel}>총 산책</Text>
           </View>
+          <Text style={styles.statLabel}>총 산책</Text>
         </View>
-        <View style={styles.stat}>
-          <Icon name="icon-footprints" size={24} width={24} height={24} color={colors.deepOrange} />
-          <View>
+        <View style={[styles.stat, styles.statDistance]}>
+          <View style={styles.statValueRow}>
+            <Icon name="icon-footprints" size={24} width={24} height={24} color={colors.deepOrange} />
             <Text style={styles.statValue}>{distance.toFixed(1)} km</Text>
-            <Text style={styles.statLabel}>총 거리</Text>
           </View>
+          <Text style={styles.statLabel}>총 거리</Text>
         </View>
-        <View style={styles.stat}>
-          <Icon name="icon-pets" size={18} width={18} height={18} color={colors.deepOrange} />
-          <View>
+        <View style={[styles.stat, styles.statDogs]}>
+          <View style={styles.statValueRow}>
+            <Icon name="icon-pets" size={18} width={18} height={18} color={colors.deepOrange} />
             <Text style={styles.statValue}>
               {new Set(records.map((record) => record.dogId)).size}마리
             </Text>
-            <Text style={styles.statLabel}>함께한 강아지</Text>
           </View>
+          <Text style={styles.statLabel}>함께한 강아지</Text>
         </View>
       </GradientView>
 
@@ -270,10 +271,17 @@ const styles = StyleSheet.create({
   },
   stat: {
     alignItems: "flex-start",
-    flex: 1,
-    flexDirection: "row",
-    gap: 6,
     paddingTop: 18,
+  },
+  // 열 시작 위치는 시안(Figma 10-1)의 14, 116.67, 237.33이다. 카드 안쪽 여백 14를 뺀 너비로 나눈다.
+  statWalks: { width: 102.67 },
+  statDistance: { width: 120.67 },
+  statDogs: { flex: 1 },
+  statValueRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 4,
+    height: 25,
   },
   statValue: {
     color: colors.brown,
