@@ -8,21 +8,36 @@ import {
   type ViewStyle,
 } from "react-native";
 
+import { getSignupDraft } from "../../api/signupDraft";
 import { ConsentCheckbox } from "../../components/ConsentCheckbox";
 import { OnboardingActionButton } from "../../components/OnboardingActionButton";
+import { PolicyContent } from "../../components/PolicyContent";
 import { Screen } from "../../components/Screen";
 import { colors, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
 export default function PrivacyDetailsScreen() {
   const router = useRouter();
-  const [checked, setChecked] = useState([true, true]);
+  const [checked, setChecked] = useState([false, false]);
+  const allChecked = checked.every(Boolean);
 
   const continueToRegister = () => {
-    if (checked.every(Boolean)) {
+    if (!allChecked) return;
+    // 1-4에서 필수 동의를 마치지 않았다면 1-4로 돌아간다.
+    const draft = getSignupDraft();
+    if (draft.ageConfirmed && draft.collectionUseAgreed) {
       router.replace("/1-3");
+    } else {
+      router.back();
     }
   };
+
+  const toggle = (index: number) =>
+    setChecked((current) =>
+      current.map((value, currentIndex) =>
+        currentIndex === index ? !value : value,
+      ),
+    );
 
   return (
     <Screen
@@ -35,47 +50,29 @@ export default function PrivacyDetailsScreen() {
           <Text style={styles.headerTitle}>개인정보 처리방침</Text>
 
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>목업 안내</Text>
-            <Text style={styles.summaryDetails}>
-              실제 개인정보 처리방침은 아직 연결되지 않았어요.{"\n"}
-              현재 화면의 동의는 실제 동의로 저장되지 않아요.
-            </Text>
+            <PolicyContent
+              kind="privacy"
+              textColor={colors.onboardingSummaryText}
+            />
           </View>
-
-          <Text style={styles.sectionTitleOne}>개인정보 안내</Text>
-          <Text style={styles.sectionBodyOne}>
-            실제 서비스의 개인정보 처리 내용은{"\n"}정식 문서 연결 후 확인할 수 있어요.
-          </Text>
-
-          <Text style={styles.sectionTitleTwo}>동의 안내</Text>
-          <Text style={styles.sectionBodyTwo}>
-            현재 입력과 동의는 화면 흐름을 확인하기 위한{"\n"}목업이며 서버에 전송되지 않아요.
-          </Text>
 
           <View style={styles.footerLine} />
           <DetailConsentRow
             checked={checked[0]}
-            label="목업 개인정보 안내 확인"
-            onPress={() =>
-              setChecked((current) =>
-                current.map((value, index) => (index === 0 ? !value : value)),
-              )
-            }
+            label="개인정보 처리방침을 확인했습니다"
+            onPress={() => toggle(0)}
             style={styles.firstConsentRow}
           />
           <DetailConsentRow
             checked={checked[1]}
-            label="목업 동의 안내 확인"
-            onPress={() =>
-              setChecked((current) =>
-                current.map((value, index) => (index === 1 ? !value : value)),
-              )
-            }
+            label="개인정보 수집·이용에 동의합니다"
+            onPress={() => toggle(1)}
             style={styles.secondConsentRow}
           />
         </View>
 
         <OnboardingActionButton
+          disabled={!allChecked}
           title="동의하고 닫기"
           onPress={continueToRegister}
         />
@@ -136,71 +133,12 @@ const styles = StyleSheet.create({
     borderColor: colors.onboardingSummaryBorder,
     borderRadius: 15,
     borderWidth: 1.5,
-    height: 156,
+    bottom: 244,
     left: 19,
+    padding: 16,
     position: "absolute",
     top: 96,
     width: 338,
-  },
-  summaryTitle: {
-    color: colors.onboardingSummaryText,
-    fontFamily: fontFamilies.notoSansKRBold,
-    fontSize: typography.fontSizes.bodyLarge,
-    left: 20,
-    lineHeight: 20,
-    position: "absolute",
-    top: 16,
-  },
-  summaryDetails: {
-    color: colors.onboardingSummaryText,
-    fontFamily: fontFamilies.notoSansKRRegular,
-    fontSize: typography.fontSizes.bodyLarge,
-    left: 20,
-    lineHeight: 20,
-    position: "absolute",
-    top: 56,
-    width: 298,
-  },
-  summaryEmphasis: {
-    fontFamily: fontFamilies.notoSansKRBold,
-  },
-  sectionTitleOne: {
-    color: colors.black,
-    fontFamily: fontFamilies.notoSansKRRegular,
-    fontSize: typography.fontSizes.mediumTitle,
-    left: 17,
-    lineHeight: 24,
-    position: "absolute",
-    top: 271,
-  },
-  sectionBodyOne: {
-    color: colors.black,
-    fontFamily: fontFamilies.notoSansKRRegular,
-    fontSize: typography.fontSizes.body,
-    left: 17,
-    lineHeight: 17.5,
-    position: "absolute",
-    top: 296,
-    width: 341,
-  },
-  sectionTitleTwo: {
-    color: colors.black,
-    fontFamily: fontFamilies.notoSansKRRegular,
-    fontSize: typography.fontSizes.mediumTitle,
-    left: 17,
-    lineHeight: 24,
-    position: "absolute",
-    top: 366,
-  },
-  sectionBodyTwo: {
-    color: colors.black,
-    fontFamily: fontFamilies.notoSansKRRegular,
-    fontSize: typography.fontSizes.body,
-    left: 17,
-    lineHeight: 17.5,
-    position: "absolute",
-    top: 391,
-    width: 341,
   },
   footerLine: {
     backgroundColor: colors.onboardingSummaryText,

@@ -12,6 +12,8 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 
+import { fetchMe, routeForOnboarding } from "../../api/auth";
+import { getToken } from "../../api/tokenStorage";
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
 import {
@@ -30,11 +32,25 @@ export default function WelcomeScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      router.replace("/1-2");
+    let cancelled = false;
+
+    const resolveDestination = async () => {
+      if (!(await getToken())) return "/1-2" as const;
+      const me = await fetchMe();
+      if (!me.ok) return "/1-2" as const;
+      return routeForOnboarding(me.data) ?? ("/1-2" as const);
+    };
+
+    const destination = resolveDestination();
+    const timeout = setTimeout(async () => {
+      const target = await destination;
+      if (!cancelled) router.replace(target);
     }, WELCOME_DURATION_MS);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [router]);
 
   return (

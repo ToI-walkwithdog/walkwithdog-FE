@@ -7,20 +7,24 @@ type OnboardingActionButtonProps = {
   title: string;
   onPress: () => void;
   bottom?: number;
+  disabled?: boolean;
 };
 
 export function OnboardingActionButton({
   title,
   onPress,
   bottom = 54,
+  disabled = false,
 }: OnboardingActionButtonProps) {
   return (
     <View style={[styles.frame, { bottom }]}>
       <Pressable
         accessibilityLabel={title}
         accessibilityRole="button"
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         onPress={onPress}
-        style={styles.button}
+        style={[styles.button, disabled && styles.disabledButton]}
       >
         <Text style={styles.buttonText}>{title}</Text>
       </Pressable>
@@ -51,6 +55,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: shadows.onboardingAction.blurRadius,
     width: 316,
+  },
+  disabledButton: {
+    opacity: 0.4,
   },
   buttonText: {
     color: colors.onboardingButtonText,

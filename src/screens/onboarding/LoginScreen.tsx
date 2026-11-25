@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
+  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -7,6 +8,8 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 
+import { fetchMe, login, routeForOnboarding } from "../../api/auth";
+import { errorMessage } from "../../api/errorMessages";
 import { OnboardingBackground } from "../../components/OnboardingBackground";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
@@ -18,9 +21,32 @@ export default function LoginScreen() {
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleLogin = () => {
-    if (id.trim() && password) {
-      router.replace("/3");
+  const submittingRef = useRef(false);
+
+  const handleLogin = async () => {
+    if (!id.trim() || !password || submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      const res = await login(id.trim(), password);
+      if (!res.ok) {
+        // INVALID_CREDENTIALS, TOO_MANY_REQUESTS, 네트워크 오류 등: 화면 유지
+        Alert.alert("알림", errorMessage(res.code));
+        return;
+      }
+      const me = await fetchMe();
+      if (!me.ok) {
+        Alert.alert("알림", errorMessage(me.code));
+        return;
+      }
+      const target = routeForOnboarding(me.data);
+      if (target) {
+        router.replace(target);
+      } else {
+        // 보호소·관리자 계정은 이 앱에서 이용할 수 없다.
+        Alert.alert("알림", errorMessage("ROLE_NOT_ALLOWED"));
+      }
+    } finally {
+      submittingRef.current = false;
     }
   };
 

@@ -1,6 +1,10 @@
+import { useRef } from "react";
 import { useRouter } from "expo-router";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, StyleSheet, Text, View } from "react-native";
 
+import { fetchMe, routeFromServer } from "../../api/auth";
+import { errorMessage } from "../../api/errorMessages";
+import { savePledge } from "../../api/users";
 import { Icon } from "../../components/Icon";
 import { OnboardingBackground } from "../../components/OnboardingBackground";
 import { OnboardingPillButton } from "../../components/OnboardingPillButton";
@@ -12,6 +16,43 @@ const pawStamp = require("../../assets/images/paw-1.png");
 
 export default function PledgeScreen() {
   const router = useRouter();
+  const submittingRef = useRef(false);
+
+  const handleFailure = async (status: number, code: string | null) => {
+    if (status === 401) {
+      router.replace("/1-2");
+    } else if (code === "AGE_REVIEW_REQUIRED") {
+      const route = await routeFromServer();
+      if (route) router.replace(route);
+    } else {
+      Alert.alert("알림", errorMessage(code));
+    }
+  };
+
+  const submitPledge = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      const me = await fetchMe();
+      if (!me.ok) {
+        await handleFailure(me.status, me.code);
+        return;
+      }
+      if (!me.data.current_pledge_version) {
+        Alert.alert("알림", errorMessage(null));
+        return;
+      }
+      const res = await savePledge(me.data.current_pledge_version);
+      if (res.ok) {
+        router.replace("/2-1");
+      } else {
+        // PLEDGE_VERSION_MISMATCH, PLEDGE_NOT_ALLOWED 등
+        await handleFailure(res.status, res.code);
+      }
+    } finally {
+      submittingRef.current = false;
+    }
+  };
 
   return (
     <Screen
@@ -97,7 +138,7 @@ export default function PledgeScreen() {
 
         <OnboardingPillButton
           title="약속했개!"
-          onPress={() => router.replace("/2-1")}
+          onPress={submitPledge}
         />
       </View>
     </Screen>

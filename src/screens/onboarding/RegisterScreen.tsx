@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { usePreventRemove, useRouter } from "expo-router";
 import {
   Platform,
@@ -9,18 +9,34 @@ import {
   View,
 } from "react-native";
 
+import {
+  isValidLoginId,
+  isValidNickname,
+  isValidPassword,
+} from "../../api/accountRules";
+import { login } from "../../api/auth";
+import { errorMessage } from "../../api/errorMessages";
+import {
+  clearSignupDraft,
+  getSignupDraft,
+  setPolicyVersion,
+} from "../../api/signupDraft";
+import {
+  checkNicknameAvailability,
+  fetchPrivacyPolicy,
+  registerUser,
+} from "../../api/users";
 import { Icon } from "../../components/Icon";
 import { OnboardingPillButton } from "../../components/OnboardingPillButton";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
 import { useMockSession } from "../../context/MockSession";
-import { checkMockIdAvailability } from "../../data/users";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
-const ID_PATTERN = /^[A-Za-z0-9]{4,20}$/;
-const PASSWORD_PATTERN =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{5,128}$/;
+
+const NICKNAME_AVAILABLE_MESSAGE = "*등록 가능한 닉네임입니다";
+const NICKNAME_DUPLICATE_MESSAGE = "*중복입니다. 다른 닉네임을 사용해 주세요";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -34,31 +50,56 @@ export default function RegisterScreen() {
   const [confirmedPassword, setConfirmedPassword] = useState("");
   const [validationMessage, setValidationMessage] = useState("");
   const [backAllowed, setBackAllowed] = useState(false);
+  const submittingRef = useRef(false);
+  const latestNicknameRef = useRef("");
 
   usePreventRemove(!backAllowed, () => {
     setBackAllowed(true);
     setTimeout(() => router.dismissTo("/1-2"), 0);
   });
 
-  const checkNickname = () => {
-    if (!nickname.trim()) {
+  const showNicknameResult = (available: boolean) => {
+    setNicknameChecked(true);
+    setNicknameAvailable(available);
+    setNicknameMessage(
+      available ? NICKNAME_AVAILABLE_MESSAGE : NICKNAME_DUPLICATE_MESSAGE,
+    );
+  };
+
+  // 확인하지 못한 경우: 확인 완료로 보지 않고 사유를 닉네임 아래에 보여 준다.
+  const showNicknameFailure = (message: string) => {
+    setNicknameChecked(false);
+    setNicknameAvailable(false);
+    setNicknameMessage(message);
+  };
+
+  const checkNickname = async () => {
+    const requested = nickname.trim();
+    if (!requested) {
       setNicknameChecked(false);
       setNicknameAvailable(false);
       setNicknameMessage("");
       return;
     }
 
-    const available = checkMockIdAvailability(nickname);
-    setNicknameChecked(true);
-    setNicknameAvailable(available);
-    setNicknameMessage(
-      available
-        ? "*등록 가능한 닉네임입니다"
-        : "*중복입니다. 다른 닉네임을 사용해 주세요",
-    );
+    // 형식에 맞지 않으면 서버에 묻지 않는다.
+    if (!isValidNickname(requested)) {
+      showNicknameFailure(errorMessage("INVALID_NICKNAME_FORMAT"));
+      return;
+    }
+
+    const res = await checkNicknameAvailability(requested);
+    // 입력이 바뀐 뒤 도착한 응답은 버린다.
+    if (requested !== latestNicknameRef.current.trim()) return;
+    if (res.ok) {
+      showNicknameResult(res.data.available);
+    } else {
+      // 422 닉네임 형식 오류, 429 TOO_MANY_REQUESTS, 네트워크 오류 등
+      showNicknameFailure(errorMessage(res.code));
+    }
   };
 
-  const register = () => {
+  const register = async () => {
     if (!nickname.trim()) {
       setValidationMessage("닉네임을 입력해 주세요.");
       return;
@@ -67,11 +108,15 @@ export default function RegisterScreen() {
       setValidationMessage("닉네임 중복 확인을 완료해 주세요.");
       return;
     }
-    if (!ID_PATTERN.test(id)) {
+    if (!isValidNickname(nickname.trim())) {
+      setValidationMessage(errorMessage("INVALID_NICKNAME_FORMAT"));
+      return;
+    }
+    if (!isValidLoginId(id)) {
       setValidationMessage("아이디는 4~20자의 영문과 숫자만 사용할 수 있어요.");
       return;
     }
-    if (!PASSWORD_PATTERN.test(password)) {
+    if (!isValidPassword(password)) {
       setValidationMessage("비밀번호 규칙을 확인해 주세요.");
       return;
     }
@@ -81,11 +126,63 @@ export default function RegisterScreen() {
     }
 
     setValidationMessage("");
-    updateProfile({ ...profile, nickname: nickname.trim() });
-    router.push("/1-6");
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      const draft = getSignupDraft();
+      let documentVersion = draft.policyVersion;
+      if (!documentVersion) {
+        const policy = await fetchPrivacyPolicy();
+        // 503 POLICY_DOCUMENT_UNAVAILABLE 등: 가입을 막고 화면에 머문다.
+        if (!policy.ok) {
+          setValidationMessage(errorMessage(policy.code));
+          return;
+        }
+        documentVersion = policy.data.document_version;
+      }
+
+      const res = await registerUser({
+        login_id: id,
+        nickname: nickname.trim(),
+        password,
+        privacy: {
+          document_version: documentVersion,
+          age_14_plus_confirmed: draft.ageConfirmed,
+          collection_use_agreed: draft.collectionUseAgreed,
+          // 대응하는 동의 UI가 없어 항상 false(unverified).
+          ai_overseas_transfer_agreed: false,
+        },
+      });
+      if (!res.ok) {
+        if (res.code === "NICKNAME_ALREADY_EXISTS") {
+          showNicknameResult(false);
+        } else {
+          if (res.code === "POLICY_VERSION_MISMATCH") {
+            setPolicyVersion(null); // 다음 제출에서 최신 버전을 다시 조회한다.
+          }
+          setValidationMessage(errorMessage(res.code));
+        }
+        return;
+      }
+
+      clearSignupDraft();
+      const loggedIn = await login(id, password);
+      if (!loggedIn.ok) {
+        // 가입은 끝났으므로 다시 가입하지 않고 로그인 화면으로 보낸다.
+        setBackAllowed(true);
+        setTimeout(() => router.dismissTo("/1-2"), 0);
+        return;
+      }
+
+      updateProfile({ ...profile, nickname: nickname.trim() });
+      router.push("/1-6");
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   const clearNicknameCheck = (value: string) => {
+    latestNicknameRef.current = value;
     setNickname(value);
     setNicknameChecked(false);
     setNicknameAvailable(false);
@@ -196,7 +293,7 @@ export default function RegisterScreen() {
             value={password}
           />
           <Text style={styles.passwordHint}>
-            *5~128자 이내, 대문자, 소문자, 숫자, 특수문자 모두 필수
+            *15~128자 이내, 대문자, 소문자, 숫자, 특수문자 모두 필수
           </Text>
 
           <Text style={[styles.fieldLabel, styles.confirmLabel]}>

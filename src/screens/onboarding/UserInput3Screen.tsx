@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import {
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -8,6 +9,21 @@ import {
   View,
 } from "react-native";
 
+import { routeForStep, routeFromServer } from "../../api/auth";
+import { errorMessage } from "../../api/errorMessages";
+import {
+  entryRouteForDogExperience,
+  saveDogExperience,
+  type DogExperienceBody,
+} from "../../api/onboarding";
+import {
+  CHALLENGE_CODES,
+  CHALLENGE_NONE_LABEL,
+  DIFFICULTY_CODES,
+  EXPERIENCE_DOG_SIZE_CODES,
+  WALKING_FREQUENCY_CODES,
+} from "../../api/onboardingCodes";
+import { getOnboardingDraft } from "../../api/onboardingDraft";
 import { OnboardingChoiceChip } from "../../components/OnboardingChoiceChip";
 import { OnboardingRadioOption } from "../../components/OnboardingRadioOption";
 import { OnboardingStepNavigation } from "../../components/OnboardingStepNavigation";
@@ -19,7 +35,10 @@ import { fontFamilies } from "../../theme/typography";
 
 export default function UserInput3Screen() {
   const router = useRouter();
-  const [hasExperience, setHasExperience] = useState(true);
+  const [hasExperience, setHasExperience] = useState(
+    getOnboardingDraft().hasExperience ?? true,
+  );
+  const submittingRef = useRef(false);
   const [breed, setBreed] = useState("");
   const [dogSize, setDogSize] = useState("중형견");
   const [walkFrequency, setWalkFrequency] = useState("거의 매일");
@@ -28,12 +47,83 @@ export default function UserInput3Screen() {
     "줄 당김",
   ]);
 
+  // "특별히 없음"은 다른 항목과 함께 선택할 수 없다(BE CHALLENGE_NONE_CONFLICT).
   const toggleSituation = (situation: string) => {
-    setDifficultSituations((current) =>
-      current.includes(situation)
-        ? current.filter((value) => value !== situation)
-        : [...current, situation],
-    );
+    setDifficultSituations((current) => {
+      if (situation === CHALLENGE_NONE_LABEL) {
+        return current.includes(situation) ? [] : [situation];
+      }
+      const others = current.filter((value) => value !== CHALLENGE_NONE_LABEL);
+      return others.includes(situation)
+        ? others.filter((value) => value !== situation)
+        : [...others, situation];
+    });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    // 이미 끝낸 단계면 서버 상태에 맞는 화면으로 간다.
+    void entryRouteForDogExperience().then((route) => {
+      if (route && !cancelled) router.replace(route);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  const saveExperience = async () => {
+    if (submittingRef.current) return;
+
+    let body: DogExperienceBody;
+    if (hasExperience) {
+      const breedText = breed.trim();
+      // 견종은 필수이고 200자 이하다.
+      if (!breedText || breedText.length > 200) {
+        Alert.alert(
+          "입력 확인",
+          errorMessage(
+            breedText ? "INVALID_EXPERIENCED_BREED" : "EXPERIENCED_BREED_REQUIRED",
+          ),
+        );
+        return;
+      }
+      body = {
+        has_experience: true,
+        experienced_breeds_text: breedText,
+        dog_size_code: EXPERIENCE_DOG_SIZE_CODES[dogSize],
+        walking_frequency: WALKING_FREQUENCY_CODES[walkFrequency],
+        perceived_difficulty: DIFFICULTY_CODES[walkDifficulty],
+        challenge_codes: difficultSituations.map(
+          (situation) => CHALLENGE_CODES[situation],
+        ),
+      };
+    } else {
+      body = { has_experience: false };
+    }
+
+    submittingRef.current = true;
+    try {
+      const res = await saveDogExperience(body);
+      if (res.ok) {
+        router.push(routeForStep(res.data.next_onboarding_step) ?? "/2-5");
+        return;
+      }
+      if (res.status === 401) {
+        router.replace("/1-2");
+      } else if (
+        res.code === "DOG_EXPERIENCE_ALREADY_COMPLETED" ||
+        res.code === "PREVIOUS_STEP_NOT_COMPLETED" ||
+        res.code === "AGE_REVIEW_REQUIRED"
+      ) {
+        const route = await routeFromServer();
+        if (route) router.replace(route);
+      } else {
+        // 422 등: 화면 유지
+        Alert.alert("알림", errorMessage(res.code));
+      }
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   return (
@@ -182,7 +272,7 @@ export default function UserInput3Screen() {
         <OnboardingStepNavigation
           bottom={38}
           onPrevious={() => router.replace("/2-3")}
-          onNext={() => router.push("/2-5")}
+          onNext={saveExperience}
         />
       </View>
     </Screen>

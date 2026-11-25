@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
+import { setConsentFromChecks, setPolicyVersion } from "../../api/signupDraft";
+import { fetchPrivacyPolicy } from "../../api/users";
 import { ConsentCheckbox } from "../../components/ConsentCheckbox";
 import { Icon } from "../../components/Icon";
 import { OnboardingActionButton } from "../../components/OnboardingActionButton";
@@ -12,7 +14,10 @@ import { fontFamilies } from "../../theme/typography";
 
 export default function PrivacyPolicyScreen() {
   const router = useRouter();
-  const [checked, setChecked] = useState([true, true, true]);
+  const [checked, setChecked] = useState([false, false, false]);
+  const allChecked = checked.every(Boolean);
+  const toggleAll = () =>
+    setChecked(allChecked ? [false, false, false] : [true, true, true]);
 
   const toggleCheck = (index: number) => {
     setChecked((current) =>
@@ -22,9 +27,22 @@ export default function PrivacyPolicyScreen() {
     );
   };
 
-  const openDetails = () => router.push("/1-5");
-  const agreeAll = () => {
-    setChecked([true, true, true]);
+  useEffect(() => {
+    // 실패(503 POLICY_DOCUMENT_UNAVAILABLE 등)해도 가입 시점에 다시 조회한다.
+    fetchPrivacyPolicy().then((res) => {
+      if (res.ok) setPolicyVersion(res.data.document_version);
+    });
+  }, []);
+
+  const openDetails = () => {
+    setConsentFromChecks(checked);
+    router.push("/1-5");
+  };
+  // 수집·이용 동의(0)와 만 14세 이상 확인(2)이 필요하다. 산책 책임 확인(1)은 선택이다.
+  const requiredChecked = checked[0] && checked[2];
+  const goNext = () => {
+    if (!requiredChecked) return;
+    setConsentFromChecks(checked);
     router.push("/1-5");
   };
 
@@ -52,9 +70,20 @@ export default function PrivacyPolicyScreen() {
 
           <Text style={styles.title}>개인정보 처리방침</Text>
           <Text style={styles.subtitle}>
-            현재 개인정보 안내는 목업이에요.{"\n"}실제 동의는 저장되지 않아요.
+            서비스 이용을 위해{"\n"}아래 항목에 동의해 주세요.
           </Text>
 
+          <View style={[styles.consentRow, { top: 280 }]}>
+            <ConsentCheckbox
+              accessibilityLabel="전체 동의"
+              checked={allChecked}
+              onPress={toggleAll}
+              style={[styles.checkbox, { top: 0 }]}
+            />
+            <Text style={[styles.consentText, styles.allConsentText, { top: 4 }]}>
+              전체 동의
+            </Text>
+          </View>
           <ConsentRow
             checked={checked[0]}
             checkboxTop={2}
@@ -62,7 +91,7 @@ export default function PrivacyPolicyScreen() {
             onPress={toggleCheck}
             onOpenDetails={openDetails}
             rowIndex={0}
-            top={304}
+            top={332}
             withDetailsLink
           />
           <ConsentRow
@@ -71,7 +100,7 @@ export default function PrivacyPolicyScreen() {
             labelTop={4}
             onPress={toggleCheck}
             rowIndex={1}
-            top={349}
+            top={377}
             text="산책 중 발생하는 책임은 귀하에게 있습니다."
           />
           <ConsentRow
@@ -80,12 +109,16 @@ export default function PrivacyPolicyScreen() {
             labelTop={4}
             onPress={toggleCheck}
             rowIndex={2}
-            top={392}
+            top={420}
             text="만 14세 이상이며 모든 약관을 확인했습니다."
           />
         </View>
 
-        <OnboardingActionButton title="전체 동의" onPress={agreeAll} />
+        <OnboardingActionButton
+          disabled={!requiredChecked}
+          title="다음"
+          onPress={goNext}
+        />
       </View>
     </Screen>
   );
@@ -208,6 +241,9 @@ const styles = StyleSheet.create({
     lineHeight: 17.25,
     position: "absolute",
     width: 300,
+  },
+  allConsentText: {
+    fontFamily: fontFamilies.pretendardMedium,
   },
   detailsLink: {
     color: colors.policyLinkBlue,

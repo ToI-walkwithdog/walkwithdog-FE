@@ -1,21 +1,29 @@
+import { useEffect } from "react";
 import { useRouter } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { getSubmittedApplication } from "../../api/bookingDraft";
+import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
-import { useMockSession } from "../../context/MockSession";
-import { availableBookings } from "../../data/availableBookings";
-import { dogs } from "../../data/dogs";
 import { GradientView } from "../../components/GradientView";
 import { gradientButtonWarm, gradientCardCream } from "../../theme/gradients";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
+import { dogImageSource } from "../../utils/dogImage";
+import { formatSlotDate, formatSlotTime } from "../../utils/kst";
 
 export default function ApplicationCompleteScreen() {
   const router = useRouter();
-  const { selectedBooking } = useMockSession();
-  const dog = dogs.find((item) => item.id === selectedBooking?.dogId);
-  const option = availableBookings.find((item) => item.dogId === selectedBooking?.dogId);
-  if (!selectedBooking || !dog || !option) throw new Error("Selected booking is unavailable.");
+  const application = getSubmittedApplication();
+
+  // 접수 결과 없이 들어오면(앱을 다시 연 경우 등) 홈으로 보낸다.
+  useEffect(() => {
+    if (!application) router.replace("/3");
+  }, [application, router]);
+
+  if (!application) return null;
+  const { receipt } = application;
+  const source = dogImageSource(application.imageUrl);
 
   return (
     <Screen
@@ -25,33 +33,51 @@ export default function ApplicationCompleteScreen() {
     >
       <View style={styles.root}>
         <View style={styles.body}>
-          <Text style={styles.title}>신청 내용 저장 완료</Text>
+          <Text style={styles.title}>신청이 접수됐어요</Text>
           <Text style={styles.subtitle}>
-            목업으로 앱에만 저장되었어요.{"\n"}
-            보호소에는 신청이 전송되지 않았어요.
+            보호소에 신청이 전달됐어요.{"\n"}
+            승인 결과를 기다려 주세요.
           </Text>
 
           <GradientView token={gradientCardCream} style={styles.bookingCard}>
             <View style={styles.dogRow}>
-              <Image
-                accessible={false}
-                resizeMode="cover"
-                source={dog.image}
-                style={styles.dogImage}
-              />
+              {source ? (
+                <Image
+                  accessible={false}
+                  resizeMode="cover"
+                  source={source}
+                  style={styles.dogImage}
+                />
+              ) : (
+                <View style={[styles.dogImage, styles.dogImageEmpty]}>
+                  <Icon
+                    name="icon-dog"
+                    size={28}
+                    width={28}
+                    height={28}
+                    color={colors.brown2}
+                  />
+                </View>
+              )}
               <View style={styles.dogInfo}>
-                <Text style={styles.dogName}>{dog.name}</Text>
-                <Text style={styles.shelterName}>{option.shelterName}</Text>
+                <Text style={styles.dogName}>{application.dogName}</Text>
+                <Text style={styles.shelterName}>{application.shelterName}</Text>
               </View>
               <View style={styles.pendingBadge}>
                 <Text style={styles.pendingText}>승인 대기</Text>
               </View>
             </View>
-            <Text style={styles.schedule}>{selectedBooking.schedule.date} · {selectedBooking.schedule.time}</Text>
+            <Text style={styles.schedule}>
+              {formatSlotDate(receipt.requested_start_at)} ·{" "}
+              {formatSlotTime(
+                receipt.requested_start_at,
+                receipt.requested_end_at,
+              )}
+            </Text>
           </GradientView>
 
           <View style={styles.stepsCard}>
-            <Text style={styles.stepActive}>01  앱에 신청 내용 저장</Text>
+            <Text style={styles.stepActive}>01  신청 접수</Text>
             <Text style={styles.step}>02  보호소 확인·승인</Text>
             <Text style={styles.step}>03  예약 확정 후 방문</Text>
           </View>
@@ -127,6 +153,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     height: 72,
     width: 64,
+  },
+  dogImageEmpty: {
+    alignItems: "center",
+    backgroundColor: colors.cream,
+    justifyContent: "center",
   },
   dogInfo: {
     flex: 1,

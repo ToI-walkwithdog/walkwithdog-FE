@@ -9,13 +9,27 @@ import {
   View,
 } from "react-native";
 
+import { routeForFailure } from "../../api/auth";
+import { dogSizeLabel, SIZE_FILTERS } from "../../api/bookingCodes";
+import {
+  getAvailabilityList,
+  setAvailabilityList,
+  setSelectedDogId,
+  type AvailabilityList,
+} from "../../api/bookingDraft";
+import {
+  loadInitialAvailability,
+  loadMoreAvailability,
+  reloadAvailability,
+} from "../../api/bookingList";
+import type { ApiFailure, ApiResult } from "../../api/client";
+import { errorMessage } from "../../api/errorMessages";
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
-import { availableBookings } from "../../data/availableBookings";
-import { dogs } from "../../data/dogs";
-import { useMockSession } from "../../context/MockSession";
-import { colors, radii, typography } from "../../theme/tokens";
+import { colors, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
+import { dogImageSource } from "../../utils/dogImage";
+import { formatSlotDate, formatSlotTime } from "../../utils/kst";
 
 export type AvailableBookingsScreenState = "loading" | "list";
 
@@ -24,40 +38,123 @@ export function AvailableBookingsScreen({
 }: {
   state: AvailableBookingsScreenState;
 }) {
+  return state === "loading" ? <LoadingView /> : <ListView />;
+}
+
+// 7-1: 목록 첫 페이지를 불러온 뒤 7-2로 간다. 실패하면 이 화면에서 다시 시도한다.
+function LoadingView() {
   const router = useRouter();
-  const { selectDog, preferences } = useMockSession();
-  const [sizeFilter, setSizeFilter] = useState<"전체" | "소형견" | "중형견" | "대형견">(preferences?.size ?? "전체");
+  const [failure, setFailure] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (state !== "loading") return;
-    const timeout = setTimeout(() => router.replace("/7-2"), 1500);
-    return () => clearTimeout(timeout);
-  }, [router, state]);
+    let cancelled = false;
+    setFailure(null);
+    (async () => {
+      const result = await loadInitialAvailability();
+      if (cancelled) return;
+      if (result.ok) {
+        setAvailabilityList(result.data);
+        router.replace("/7-2");
+        return;
+      }
+      const target = await routeForFailure(result);
+      if (cancelled) return;
+      if (target) {
+        router.replace(target);
+        return;
+      }
+      setFailure(errorMessage(result.code));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt, router]);
 
-  if (state === "loading") {
-    return (
-      <Screen
-        backgroundColor={colors.white}
-        safeAreaEdges={[]}
-        testID="screen-7-1"
-      >
-        <View style={loadingStyles.root}>
-          <Text style={loadingStyles.title}>
-            산책 가능 목록을{"\n"}
-            가져오고 있어요 :)
-          </Text>
-          <Text style={loadingStyles.subtitle}>
-            운명의 친구들을 데려올게요 🐾
-          </Text>
-        </View>
-      </Screen>
-    );
-  }
+  return (
+    <Screen
+      backgroundColor={colors.white}
+      safeAreaEdges={[]}
+      testID="screen-7-1"
+    >
+      <View style={loadingStyles.root}>
+        <Text style={loadingStyles.title}>
+          산책 가능 목록을{"\n"}
+          가져오고 있어요 :)
+        </Text>
+        <Text style={loadingStyles.subtitle}>
+          운명의 친구들을 데려올게요 🐾
+        </Text>
+        {failure ? (
+          <View style={loadingStyles.errorBlock}>
+            <Text style={loadingStyles.errorText}>{failure}</Text>
+            <Pressable
+              accessibilityLabel="다시 시도"
+              accessibilityRole="button"
+              onPress={() => setAttempt((count) => count + 1)}
+              style={loadingStyles.retryButton}
+            >
+              <Text style={loadingStyles.retryText}>다시 시도</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="홈으로"
+              accessibilityRole="button"
+              onPress={() => router.replace("/3")}
+              style={loadingStyles.homeButton}
+            >
+              <Text style={loadingStyles.retryText}>홈으로</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    </Screen>
+  );
+}
 
-  const visibleBookings =
-    sizeFilter === "전체"
-      ? availableBookings
-      : availableBookings.filter((booking) => booking.size === sizeFilter);
+// 7-2
+function ListView() {
+  const router = useRouter();
+  const [list, setList] = useState<AvailabilityList | null>(getAvailabilityList);
+  const [busy, setBusy] = useState<"filter" | "more" | null>(null);
+
+  // 7-1을 거치지 않고 들어오면(목록이 비어 있으면) 처음부터 불러온다.
+  useEffect(() => {
+    if (!list) router.replace("/7-1");
+  }, [list, router]);
+
+  if (!list) return null;
+
+  const apply = async (
+    kind: "filter" | "more",
+    request: () => Promise<ApiResult<AvailabilityList>>,
+  ) => {
+    if (busy) return;
+    setBusy(kind);
+    try {
+      const result = await request();
+      if (result.ok) {
+        setAvailabilityList(result.data);
+        setList(result.data);
+        return;
+      }
+      await showFailure(result);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const showFailure = async (failure: ApiFailure) => {
+    const target = await routeForFailure(failure);
+    if (target) {
+      router.replace(target);
+      return;
+    }
+    Alert.alert("알림", errorMessage(failure.code));
+  };
+
+  const locationText = list.regionNames.length
+    ? list.regionNames.join(", ")
+    : "내 활동 지역";
 
   return (
     <Screen
@@ -93,7 +190,9 @@ export function AvailableBookingsScreen({
           height={18}
           color={colors.brown}
         />
-        <Text style={listStyles.locationText}>서울 성북구</Text>
+        <Text numberOfLines={1} style={listStyles.locationText}>
+          {locationText}
+        </Text>
         <Icon
           name="icon-expand-more"
           size={18}
@@ -101,76 +200,97 @@ export function AvailableBookingsScreen({
           height={18}
           color={colors.brown2}
         />
-        <Text style={listStyles.nearestText}>현재 위치 기준</Text>
+        <Text style={listStyles.nearestText}>활동 지역 기준</Text>
       </View>
 
       <View style={listStyles.filters}>
-        {(["전체", "소형견", "중형견", "대형견"] as const).map((filter) => (
-          <Pressable
-            accessibilityLabel={filter}
-            accessibilityRole="button"
-            key={filter}
-            onPress={() => setSizeFilter(filter)}
-            style={[
-              listStyles.filter,
-              sizeFilter === filter && listStyles.filterActive,
-            ]}
-          >
-            <Text
-              style={[
-                listStyles.filterText,
-                sizeFilter === filter && listStyles.filterTextActive,
-              ]}
-            >
-              {filter}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <View style={listStyles.cards}>
-        {visibleBookings.map((booking) => {
-          const dog = dogs.find((item) => item.id === booking.dogId);
+        {SIZE_FILTERS.map((filter) => {
+          const active = list.sizeCode === filter.code;
           return (
             <Pressable
-              accessibilityLabel={`${dog?.name ?? ""} 산책 예약 상세`}
+              accessibilityLabel={filter.label}
               accessibilityRole="button"
-              key={booking.dogId}
+              key={filter.label}
               onPress={() => {
-                selectDog(booking.dogId);
+                if (list.sizeCode === filter.code) return;
+                void apply("filter", () => reloadAvailability(list, filter.code));
+              }}
+              style={[listStyles.filter, active && listStyles.filterActive]}
+            >
+              <Text
+                style={[
+                  listStyles.filterText,
+                  active && listStyles.filterTextActive,
+                ]}
+              >
+                {filter.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={[listStyles.cards, busy === "filter" && listStyles.cardsBusy]}>
+        {list.items.map((dog) => {
+          const source = dogImageSource(dog.image_url);
+          const sizeLabel = dogSizeLabel(dog.size_code);
+          return (
+            <Pressable
+              accessibilityLabel={`${dog.name} 산책 예약 상세`}
+              accessibilityRole="button"
+              key={dog.dog_id}
+              onPress={() => {
+                setSelectedDogId(dog.dog_id);
                 router.push("/7-3");
               }}
               style={listStyles.card}
             >
               <View style={listStyles.profileRow}>
-                <Image
-                  accessible={false}
-                  resizeMode="cover"
-                  source={dog?.image}
-                  style={listStyles.dogImage}
-                />
+                {source ? (
+                  <Image
+                    accessible={false}
+                    resizeMode="cover"
+                    source={source}
+                    style={listStyles.dogImage}
+                  />
+                ) : (
+                  <View style={[listStyles.dogImage, listStyles.dogImageEmpty]}>
+                    <Icon
+                      name="icon-dog"
+                      size={28}
+                      width={28}
+                      height={28}
+                      color={colors.brown2}
+                    />
+                  </View>
+                )}
                 <View style={listStyles.profileText}>
                   <View style={listStyles.nameRow}>
-                    <Text style={listStyles.dogName}>{dog?.name}</Text>
-                    <View style={listStyles.sizeBadge}>
-                      <Text style={listStyles.sizeBadgeText}>{booking.size}</Text>
-                    </View>
+                    <Text style={listStyles.dogName}>{dog.name}</Text>
+                    {sizeLabel ? (
+                      <View style={listStyles.sizeBadge}>
+                        <Text style={listStyles.sizeBadgeText}>{sizeLabel}</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <Text style={listStyles.shelterText}>
-                    {booking.shelterName} · {booking.district}
+                    {dog.shelter.name}
+                    {dog.shelter.region_name ? ` · ${dog.shelter.region_name}` : ""}
                   </Text>
-                  <View style={listStyles.durationRow}>
-                    <Icon
-                      name="icon-schedule"
-                      size={14}
-                      width={14}
-                      height={14}
-                      color={colors.brown}
-                    />
-                    <Text style={listStyles.durationText}>
-                      최대 산책 시간 {booking.maxWalkMinutes}m
-                    </Text>
-                  </View>
+                  {dog.max_walk_minutes !== null ? (
+                    <View style={listStyles.durationRow}>
+                      <Icon
+                        name="icon-schedule"
+                        size={14}
+                        width={14}
+                        height={14}
+                        color={colors.brown}
+                      />
+                      <Text style={listStyles.durationText}>
+                        최대 산책 시간 {dog.max_walk_minutes}m
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={listStyles.ratingBlock}>
                   <View style={listStyles.ratingRow}>
@@ -181,7 +301,11 @@ export function AvailableBookingsScreen({
                       height={16}
                       color={colors.brown}
                     />
-                    <Text style={listStyles.rating}>{booking.rating.toFixed(1)}</Text>
+                    <Text style={listStyles.rating}>
+                      {dog.difficulty_score !== null
+                        ? dog.difficulty_score.toFixed(1)
+                        : "-"}
+                    </Text>
                   </View>
                   <Text style={listStyles.ratingHint}>산책 난이도</Text>
                 </View>
@@ -202,10 +326,14 @@ export function AvailableBookingsScreen({
                   </View>
                 </View>
                 <View style={listStyles.scheduleRows}>
-                  {booking.schedules.map((schedule) => (
-                    <View key={`${schedule.date}-${schedule.time}`} style={listStyles.scheduleRow}>
-                      <Text style={listStyles.scheduleDate}>{schedule.date}</Text>
-                      <Text style={listStyles.scheduleTime}>{schedule.time}</Text>
+                  {dog.date_slots.map((slot) => (
+                    <View key={slot.date_slot_id} style={listStyles.scheduleRow}>
+                      <Text style={listStyles.scheduleDate}>
+                        {formatSlotDate(slot.starts_at)}
+                      </Text>
+                      <Text style={listStyles.scheduleTime}>
+                        {formatSlotTime(slot.starts_at, slot.ends_at)}
+                      </Text>
                     </View>
                   ))}
                 </View>
@@ -215,14 +343,30 @@ export function AvailableBookingsScreen({
         })}
       </View>
 
-      <Pressable
-        accessibilityLabel="더보기"
-        accessibilityRole="button"
-        onPress={() => Alert.alert("안내", "현재 조건에서 더 보여드릴 예약이 없어요.")}
-        style={listStyles.moreButton}
-      >
-        <Text style={listStyles.moreText}>더보기</Text>
-      </Pressable>
+      {list.items.length === 0 && busy !== "filter" ? (
+        <View style={listStyles.empty}>
+          <Text style={listStyles.emptyTitle}>
+            지금 신청할 수 있는 강아지가 없어요
+          </Text>
+          <Text style={listStyles.emptyHint}>
+            다른 크기를 선택하거나 나중에 다시 확인해 주세요.
+          </Text>
+        </View>
+      ) : null}
+
+      {list.hasMore ? (
+        <Pressable
+          accessibilityLabel="더보기"
+          accessibilityRole="button"
+          disabled={busy !== null}
+          onPress={() => void apply("more", () => loadMoreAvailability(list))}
+          style={listStyles.moreButton}
+        >
+          <Text style={listStyles.moreText}>
+            {busy === "more" ? "불러오는 중..." : "더보기"}
+          </Text>
+        </Pressable>
+      ) : null}
 
       <View style={listStyles.notice}>
         <Icon
@@ -270,6 +414,41 @@ const loadingStyles = StyleSheet.create({
     lineHeight: 19.5,
     marginTop: 24,
   },
+  errorBlock: {
+    alignItems: "center",
+    marginTop: 32,
+    width: 327,
+  },
+  errorText: {
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundRegular,
+    fontSize: typography.fontSizes.body,
+    lineHeight: 20.3,
+    textAlign: "center",
+  },
+  retryButton: {
+    alignItems: "center",
+    backgroundColor: colors.midLightOrange,
+    borderRadius: 27,
+    height: 44,
+    justifyContent: "center",
+    marginTop: 16,
+    width: 200,
+  },
+  homeButton: {
+    alignItems: "center",
+    backgroundColor: colors.cream,
+    borderRadius: 27,
+    height: 44,
+    justifyContent: "center",
+    marginTop: 8,
+    width: 200,
+  },
+  retryText: {
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: typography.fontSizes.bodyLarge,
+  },
 });
 
 const listStyles = StyleSheet.create({
@@ -311,6 +490,7 @@ const listStyles = StyleSheet.create({
   },
   locationText: {
     color: colors.brown,
+    flexShrink: 1,
     fontFamily: fontFamilies.nanumSquareRoundBold,
     fontSize: typography.fontSizes.bodyLarge,
     lineHeight: 23,
@@ -358,6 +538,9 @@ const listStyles = StyleSheet.create({
     alignSelf: "center",
     width: 375,
   },
+  cardsBusy: {
+    opacity: 0.4,
+  },
   card: {
     borderBottomColor: "#F0E8DC",
     borderBottomWidth: 1,
@@ -373,6 +556,11 @@ const listStyles = StyleSheet.create({
     borderRadius: 12,
     height: 72,
     width: 64,
+  },
+  dogImageEmpty: {
+    alignItems: "center",
+    backgroundColor: colors.cream,
+    justifyContent: "center",
   },
   profileText: {
     flex: 1,
@@ -497,6 +685,28 @@ const listStyles = StyleSheet.create({
     fontFamily: fontFamilies.nanumSquareRoundBold,
     fontSize: 12,
     lineHeight: 18,
+  },
+  empty: {
+    alignItems: "center",
+    alignSelf: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 48,
+    width: 375,
+  },
+  emptyTitle: {
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: typography.fontSizes.subtitle,
+    lineHeight: 23.2,
+    textAlign: "center",
+  },
+  emptyHint: {
+    color: colors.brown2,
+    fontFamily: fontFamilies.nanumSquareRoundRegular,
+    fontSize: typography.fontSizes.body,
+    lineHeight: 20.3,
+    marginTop: 8,
+    textAlign: "center",
   },
   moreButton: {
     alignItems: "center",

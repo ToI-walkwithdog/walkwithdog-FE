@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { entryRouteForDogExperience } from "../../api/onboarding";
+import { getOnboardingDraft, setHasExperience as saveHasExperience } from "../../api/onboardingDraft";
 import { OnboardingStepNavigation } from "../../components/OnboardingStepNavigation";
 import { Screen } from "../../components/Screen";
 import { UserInfoBackground } from "../../components/UserInfoBackground";
@@ -10,7 +12,20 @@ import { fontFamilies } from "../../theme/typography";
 
 export default function UserInput2Screen() {
   const router = useRouter();
-  const [hasExperience, setHasExperience] = useState(false);
+  const [hasExperience, setHasExperience] = useState(
+    getOnboardingDraft().hasExperience ?? false,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    // 이미 끝낸 단계면 서버 상태에 맞는 화면으로 간다.
+    void entryRouteForDogExperience().then((route) => {
+      if (route && !cancelled) router.replace(route);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   return (
     <Screen
@@ -75,12 +90,15 @@ export default function UserInput2Screen() {
             차분한 강아지부터 산책을 시작해요.{"\n"}
             보호소의 사전 안내와 교육을 받고,{"\n"}
             첫 산책의 동행 여부도 함께 확인해요.{"\n\n"}
-            처음인 경우, 홈화면으로 바로 이동해요 :)
+            처음이어도 괜찮아요. 다음 단계에서 산책 방식만 알려 주세요 :)
           </Text>
 
           <OnboardingStepNavigation
             onPrevious={() => router.replace("/2-2")}
-            onNext={() => router.push("/2-4")}
+            onNext={() => {
+              saveHasExperience(hasExperience);
+              router.push("/2-4");
+            }}
           />
         </View>
       </View>

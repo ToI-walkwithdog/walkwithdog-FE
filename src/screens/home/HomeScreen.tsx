@@ -1,4 +1,5 @@
-import { useRouter } from "expo-router";
+import { useCallback, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import HomeDecoCircle from "../../assets/icons/home-deco-circle.svg";
@@ -13,9 +14,22 @@ import HomeStatusPill from "../../assets/icons/home-status-pill.svg";
 import { Icon } from "../../components/Icon";
 import { GradientView } from "../../components/GradientView";
 import { Screen } from "../../components/Screen";
-import { useMockSession } from "../../context/MockSession";
-import { availableBookings } from "../../data/availableBookings";
-import { dogs } from "../../data/dogs";
+import { fetchMe, routeForOnboarding } from "../../api/auth";
+import { HOME_STATUS_LABELS } from "../../api/bookingCodes";
+import { setStartableRequest } from "../../api/bookingDraft";
+import { errorMessage } from "../../api/errorMessages";
+import { fetchMyWalkRequests, type MyWalkRequest } from "../../api/walkRequests";
+import {
+  fetchActiveWalk,
+  fetchWalkHistory,
+  type WalkHistoryItem,
+} from "../../api/walks";
+import {
+  formatHomeDate,
+  formatMonthDay,
+  formatSlotDate,
+  formatSlotTime,
+} from "../../utils/kst";
 import { colors, radii, shadows, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 import {
@@ -27,13 +41,117 @@ import {
 const homeBookingDog = require("../../assets/images/home-booking-dog.png");
 const homeStartDog = require("../../assets/images/home-start-dog.png");
 
+type Section<T> =
+  | { state: "loading" }
+  | { state: "error"; code: string | null }
+  | { state: "ready"; data: T };
+
+// 아직 끝나지 않은 승인 예약 중 가장 빠른 것, 없으면 승인 대기 중 가장 빠른 것.
+function pickHomeBooking(requests: MyWalkRequest[]): MyWalkRequest | null {
+  const now = Date.now();
+  const soonest = (status: MyWalkRequest["display_status"]) =>
+    requests
+      .filter(
+        (request) =>
+          request.display_status === status &&
+          Date.parse(request.requested_end_at) > now,
+      )
+      .sort(
+        (a, b) =>
+          Date.parse(a.requested_start_at) - Date.parse(b.requested_start_at),
+      )[0];
+  return soonest("APPROVED") ?? soonest("PENDING") ?? null;
+}
+
+// 거리는 Decimal이라 문자열로 올 수 있다. "2.4km", 모르면 "-".
+function formatDistance(meters: string | number | null): string {
+  const value = meters === null ? Number.NaN : Number(meters);
+  if (!Number.isFinite(value)) return "-";
+  return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}km`;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
-  const { bookings, selectBooking, records, profile } = useMockSession();
-  const confirmedBooking = bookings.find((booking) => booking.status === "confirmed");
-  const homeBooking = confirmedBooking ?? bookings[0];
-  const bookingDog = dogs.find((dog) => dog.id === homeBooking?.dogId);
-  const bookingOption = availableBookings.find((item) => item.dogId === homeBooking?.dogId);
+  const [nickname, setNickname] = useState<string | null>(null);
+  const [booking, setBooking] = useState<Section<MyWalkRequest | null>>({ state: "loading" });
+  const [records, setRecords] = useState<Section<WalkHistoryItem[]>>({ state: "loading" });
+  const startingRef = useRef(false);
+  const homeBooking = booking.state === "ready" ? booking.data : null;
+
+  const load = useCallback(async () => {
+    const [me, requests, history] = await Promise.all([
+      fetchMe(),
+      fetchMyWalkRequests({ limit: 20 }),
+      fetchWalkHistory(3),
+    ]);
+    // 어느 호출이든 401이면 클라이언트가 토큰을 지운 뒤이므로 로그인으로 보낸다.
+    if ([me, requests, history].some((result) => !result.ok && result.status === 401)) {
+      router.replace("/1-2");
+      return;
+    }
+    if (me.ok) {
+      // 온보딩이 끝나지 않은 계정은 서버의 현재 단계로 보낸다.
+      const target = routeForOnboarding(me.data);
+      if (target && target !== "/3") {
+        router.replace(target);
+        return;
+      }
+      setNickname(me.data.nickname);
+    }
+    setBooking(
+      requests.ok
+        ? { state: "ready", data: pickHomeBooking(requests.data) }
+        : { state: "error", code: requests.code },
+    );
+    setRecords(
+      history.ok
+        ? { state: "ready", data: history.data.walks }
+        : { state: "error", code: history.code },
+    );
+  }, [router]);
+
+  // 예약하고 돌아오거나 산책을 마치고 돌아올 때마다 다시 불러온다.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  const startWalk = async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    try {
+      // 진행 중인 산책이 있으면 그 산책으로, 없으면(404) 시작할 수 있는 예약을 찾는다.
+      const active = await fetchActiveWalk();
+      if (active.ok) {
+        router.push("/5-1");
+        return;
+      }
+      if (active.status === 401) {
+        router.replace("/1-2");
+        return;
+      }
+      if (active.status !== 404) {
+        Alert.alert("알림", errorMessage(active.code));
+        return;
+      }
+      const startable = await fetchMyWalkRequests({ startableOnly: true, limit: 1 });
+      if (!startable.ok) {
+        if (startable.status === 401) router.replace("/1-2");
+        else Alert.alert("알림", errorMessage(startable.code));
+        return;
+      }
+      const request = startable.data[0];
+      if (!request) {
+        Alert.alert("안내", "지금 시작할 수 있는 예약이 없어요.");
+        return;
+      }
+      setStartableRequest(request);
+      router.push("/4-1");
+    } finally {
+      startingRef.current = false;
+    }
+  };
 
   return (
     <Screen
@@ -55,9 +173,11 @@ export default function HomeScreen() {
           <View style={styles.header}>
             <Text style={styles.greeting}>
               <Text style={styles.greetingRegular}>Hello,</Text>
-              <Text style={styles.greetingBold}> {profile.nickname}!</Text>
+              {nickname ? (
+                <Text style={styles.greetingBold}> {nickname}!</Text>
+              ) : null}
             </Text>
-            <Text style={styles.date}>Friday  May 9, 2026</Text>
+            <Text style={styles.date}>{formatHomeDate()}</Text>
             <Pressable
               accessibilityLabel="마이페이지"
               accessibilityRole="button"
@@ -118,14 +238,7 @@ export default function HomeScreen() {
             <Pressable
               accessibilityLabel="산책 시작하개"
               accessibilityRole="button"
-              onPress={() => {
-                if (!confirmedBooking) {
-                  Alert.alert("안내", "확정된 목업 예약이 없어요.");
-                  return;
-                }
-                selectBooking(confirmedBooking.id);
-                router.push("/4-1");
-              }}
+              onPress={() => void startWalk()}
               style={[styles.ctaCard, styles.ctaBottomCard]}
             >
               <HomeCtaBgStart
@@ -185,15 +298,9 @@ export default function HomeScreen() {
               accessibilityLabel="예약 상세"
               accessibilityRole="button"
               onPress={() => {
-                if (!homeBooking) {
-                  router.push("/8-1");
-                  return;
-                }
-                selectBooking(homeBooking.id);
-                if (homeBooking.status === "confirmed") router.push("/8-3");
-                else if (homeBooking.status === "pending") router.push("/8-4");
-                else if (homeBooking.status === "rejected") router.push("/8-5");
-                else router.push("/8-8");
+                // 상세 화면(8-3~8-5)은 6단계에서 서버 예약으로 연결한다. 그 전에는 목록으로 보낸다.
+                if (booking.state === "error") void load();
+                else router.push("/8-1");
               }}
               style={styles.bookingCard}
             >
@@ -201,17 +308,37 @@ export default function HomeScreen() {
                 token={gradientCardCream}
                 style={styles.bookingCardBackground}
               />
-              <Text style={styles.bookingDogName}>{bookingDog ? `${bookingDog.name}와 산책` : "예약이 없어요"}</Text>
-              <View style={styles.bookingStatus}>
-                <GradientView
-                  token={gradientHomeBookingStatus}
-                  style={styles.bookingStatusBackground}
-                />
-                <Text style={styles.bookingStatusText}>
-                  {homeBooking?.status === "confirmed" ? "예약 확정" : homeBooking?.status === "pending" ? "승인 대기" : homeBooking?.status === "rejected" ? "예약 거절" : homeBooking ? "취소 완료" : "예약 없음"}
-                </Text>
-              </View>
-              <Text style={styles.bookingDate}>{homeBooking ? `${homeBooking.schedule.date} · ${homeBooking.schedule.time}` : "산책을 신청해 보세요"}</Text>
+              <Text style={styles.bookingDogName}>
+                {homeBooking
+                  ? `${homeBooking.dog.name}와 산책`
+                  : booking.state === "ready"
+                    ? "예약이 없어요"
+                    : booking.state === "error"
+                      ? "예약을 불러오지 못했어요"
+                      : ""}
+              </Text>
+              {booking.state === "ready" ? (
+                <View style={styles.bookingStatus}>
+                  <GradientView
+                    token={gradientHomeBookingStatus}
+                    style={styles.bookingStatusBackground}
+                  />
+                  <Text style={styles.bookingStatusText}>
+                    {homeBooking
+                      ? HOME_STATUS_LABELS[homeBooking.display_status]
+                      : "예약 없음"}
+                  </Text>
+                </View>
+              ) : null}
+              <Text style={styles.bookingDate}>
+                {homeBooking
+                  ? `${formatSlotDate(homeBooking.requested_start_at)} · ${formatSlotTime(homeBooking.requested_start_at, homeBooking.requested_end_at)}`
+                  : booking.state === "ready"
+                    ? "산책을 신청해 보세요"
+                    : booking.state === "error"
+                      ? "눌러서 다시 시도해 주세요"
+                      : ""}
+              </Text>
               <View style={styles.bookingLocation}>
                 <Icon
                   name="icon-location"
@@ -220,7 +347,7 @@ export default function HomeScreen() {
                   height={14}
                   color={colors.mildLightBrown}
                 />
-                <Text style={styles.bookingPlace}>{bookingOption?.shelterName ?? ""}</Text>
+                <Text style={styles.bookingPlace}>{homeBooking?.shelter_name ?? ""}</Text>
               </View>
             </Pressable>
           </View>
@@ -243,16 +370,25 @@ export default function HomeScreen() {
               />
             </Pressable>
 
-            {records.slice(0, 3).map((record, index) => (
+            {records.state === "ready" && records.data.length === 0 ? (
+              <Text style={styles.recordsEmpty}>아직 산책 기록이 없어요</Text>
+            ) : null}
+            {records.state === "error" ? (
+              <Text style={styles.recordsEmpty}>
+                {errorMessage(records.code)}
+              </Text>
+            ) : null}
+
+            {(records.state === "ready" ? records.data : []).map((record, index) => (
               <View
-                key={record.id}
+                key={record.walk_id}
                 style={[
                   styles.recordRow,
                   { top: 28 + index * 76 },
                 ]}
               >
-                <Text style={styles.recordName}>{record.displayName}</Text>
-                <Text style={styles.recordDate}>{record.displayDate}</Text>
+                <Text style={styles.recordName}>{`${record.dog.name}와 산책`}</Text>
+                <Text style={styles.recordDate}>{formatMonthDay(record.started_at)}</Text>
                 <View style={styles.recordLocation}>
                   <Icon
                     name="icon-location"
@@ -261,9 +397,9 @@ export default function HomeScreen() {
                     height={14}
                     color={colors.mildLightBrown}
                   />
-                  <Text style={styles.recordPlace}>{record.shelterName}</Text>
+                  <Text style={styles.recordPlace}>{record.shelter_name ?? ""}</Text>
                 </View>
-                <Text style={styles.recordDistance}>{record.displayDistance}</Text>
+                <Text style={styles.recordDistance}>{formatDistance(record.total_distance_m)}</Text>
                 {index < 2 ? <View style={styles.divider} /> : null}
               </View>
             ))}
@@ -580,6 +716,15 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
     top: 4,
+  },
+  recordsEmpty: {
+    color: colors.brown2,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: 14,
+    left: 0,
+    lineHeight: 20,
+    position: "absolute",
+    top: 52,
   },
   recordRow: {
     height: 76,

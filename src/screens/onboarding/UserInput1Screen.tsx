@@ -1,7 +1,22 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
+import {
+  formatBirthDate,
+  isValidBirthDate,
+  isValidFullName,
+  isValidPhoneNumber,
+  toApiBirthDate,
+} from "../../api/accountRules";
+import { routeForStep, routeFromServer } from "../../api/auth";
+import { errorMessage } from "../../api/errorMessages";
+import {
+  confirmPhoneVerification,
+  entryRouteForBasicInfo,
+  saveBasicInfo,
+  sendPhoneVerification,
+} from "../../api/onboarding";
 import { OnboardingStepNavigation } from "../../components/OnboardingStepNavigation";
 import { PillTextInput } from "../../components/PillTextInput";
 import { Screen } from "../../components/Screen";
@@ -10,60 +25,9 @@ import { UserInfoBackground } from "../../components/UserInfoBackground";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
 
-function formatBirthDate(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-
-  if (digits.length <= 4) {
-    return digits;
-  }
-
-  if (digits.length <= 6) {
-    return `${digits.slice(0, 4)}.${digits.slice(4)}`;
-  }
-
-  return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
-}
-
-function isValidBirthDate(value: string) {
-  const match = /^(\d{4})\.(\d{2})\.(\d{2})$/.exec(value);
-  if (!match) {
-    return false;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (year < 1 || month < 1 || month > 12) {
-    return false;
-  }
-
-  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const daysInMonth = [
-    31,
-    isLeapYear ? 29 : 28,
-    31,
-    30,
-    31,
-    30,
-    31,
-    31,
-    30,
-    31,
-    30,
-    31,
-  ];
-  if (day < 1 || day > daysInMonth[month - 1]) {
-    return false;
-  }
-
-  const today = new Date();
-  return (
-    year < today.getFullYear() ||
-    (year === today.getFullYear() &&
-      (month < today.getMonth() + 1 ||
-        (month === today.getMonth() + 1 && day <= today.getDate())))
-  );
-}
+type ValidationField = "name" | "birthDate" | "phone";
+// text가 없으면 칸의 기본 안내 문구를 보여 준다.
+type Validation = { field: ValidationField; text: string | null } | null;
 
 export default function UserInput1Screen() {
   const router = useRouter();
@@ -74,55 +38,159 @@ export default function UserInput1Screen() {
   const [verificationCode, setVerificationCode] = useState("");
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [verificationRequested, setVerificationRequested] = useState(false);
-  const [validationMessage, setValidationMessage] = useState<
-    "name" | "birthDate" | "phone" | null
-  >(null);
+  const [validation, setValidation] = useState<Validation>(null);
 
-  const requestVerification = () => {
-    const digits = phone.replace(/\D/g, "");
-    if (digits.length === 10 || digits.length === 11) {
-      setPhoneVerified(false);
-      setVerificationRequested(true);
-      Alert.alert("목업 인증", "실제 인증번호는 전송되지 않아요. 테스트 번호 123456을 입력해 주세요.");
-    } else {
+  const verificationIdRef = useRef<string | null>(null);
+  const busyRef = useRef(false);
+
+  const showError = (field: ValidationField, text: string | null = null) =>
+    setValidation({ field, text });
+  const clearError = (field: ValidationField) =>
+    setValidation((current) => (current?.field === field ? null : current));
+
+  useEffect(() => {
+    let cancelled = false;
+    // 이미 끝낸 단계면 서버 상태에 맞는 화면으로 간다.
+    void entryRouteForBasicInfo().then((route) => {
+      if (route && !cancelled) router.replace(route);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  const requestVerification = async () => {
+    if (!isValidPhoneNumber(phone)) {
       setVerificationRequested(false);
-      setValidationMessage("phone");
+      showError("phone", errorMessage("INVALID_PHONE_NUMBER"));
       Alert.alert("전화번호 확인", "전화번호를 올바르게 입력해 주세요.");
+      return;
+    }
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      const res = await sendPhoneVerification(phone.trim());
+      if (res.ok) {
+        // 200은 발송 요청 접수이며 문자 수신을 뜻하지 않는다.
+        verificationIdRef.current = res.data.verification_id;
+        setPhoneVerified(false);
+        setVerificationRequested(true);
+        clearError("phone");
+        Alert.alert("인증번호 발송", "인증번호를 보냈어요. 5분 안에 입력해 주세요.");
+        return;
+      }
+      verificationIdRef.current = null;
+      setVerificationRequested(false);
+      if (res.status === 401) {
+        router.replace("/1-2");
+        return;
+      }
+      if (res.code === "AGE_REVIEW_REQUIRED") {
+        const route = await routeFromServer();
+        if (route) router.replace(route);
+        return;
+      }
+      showError("phone", errorMessage(res.code));
+    } finally {
+      busyRef.current = false;
     }
   };
 
-  const confirmVerification = () => {
-    if (verificationRequested && verificationCode === "123456") {
-      setPhoneVerified(true);
-      setValidationMessage((current) =>
-        current === "phone" ? null : current,
-      );
-      Alert.alert("목업 인증 완료", "실제 휴대폰 인증은 이루어지지 않았어요.");
-    } else {
-      setValidationMessage("phone");
-      Alert.alert("인증 확인", "인증 요청 후 테스트 번호 123456을 입력해 주세요.");
+  const confirmVerification = async () => {
+    const verificationId = verificationIdRef.current;
+    if (!verificationRequested || !verificationId) {
+      showError("phone", "인증 요청을 먼저 해 주세요.");
+      return;
+    }
+    if (verificationCode.length !== 6) {
+      showError("phone", "인증번호 6자리를 입력해 주세요.");
+      Alert.alert("인증 확인", "인증번호 6자리를 입력해 주세요.");
+      return;
+    }
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      const res = await confirmPhoneVerification(verificationId, verificationCode);
+      if (res.ok) {
+        setPhoneVerified(true);
+        clearError("phone");
+        Alert.alert("인증 완료", "휴대폰 인증이 완료됐어요.");
+      } else if (res.status === 401) {
+        router.replace("/1-2");
+      } else {
+        // VERIFICATION_CODE_INVALID, VERIFICATION_EXPIRED, VERIFICATION_ATTEMPTS_EXCEEDED 등
+        showError("phone", errorMessage(res.code));
+      }
+    } finally {
+      busyRef.current = false;
     }
   };
 
-  const goToNextStep = () => {
-    if (!name.trim()) {
-      setValidationMessage("name");
+  const goToNextStep = async () => {
+    if (!isValidFullName(name)) {
+      showError("name", errorMessage("INVALID_FULL_NAME"));
       return;
     }
 
     if (!isValidBirthDate(birthDate)) {
-      setValidationMessage("birthDate");
+      showError("birthDate");
       return;
     }
 
-    if (!phoneVerified) {
-      setValidationMessage("phone");
+    const verificationId = verificationIdRef.current;
+    if (!phoneVerified || !verificationId) {
+      showError("phone");
       return;
     }
 
-    setValidationMessage(null);
-    updateProfile({ ...profile, name: name.trim(), phone });
-    router.push("/2-3");
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      const res = await saveBasicInfo({
+        full_name: name.normalize("NFC").trim(),
+        birth_date: toApiBirthDate(birthDate),
+        phone_verification_id: verificationId,
+      });
+      if (res.ok) {
+        setValidation(null);
+        updateProfile({ ...profile, name: name.trim(), phone });
+        router.push(routeForStep(res.data.next_step) ?? "/2-3");
+        return;
+      }
+      if (res.status === 401) {
+        router.replace("/1-2");
+        return;
+      }
+      switch (res.code) {
+        case "BASIC_INFO_ALREADY_COMPLETED":
+        case "PREVIOUS_STEP_NOT_COMPLETED":
+        case "AGE_BELOW_MINIMUM":
+        case "AGE_REVIEW_REQUIRED": {
+          // 만 14세 미만이면 계정이 나이 확인 대기로 바뀌고 서버 상태가 그 화면으로 안내한다.
+          const route = await routeFromServer();
+          if (route) router.replace(route);
+          break;
+        }
+        case "INVALID_FULL_NAME":
+          showError("name", errorMessage(res.code));
+          break;
+        case "INVALID_BIRTH_DATE":
+        case "AGE_ABOVE_MAXIMUM":
+          showError("birthDate", errorMessage(res.code));
+          break;
+        case "PHONE_VERIFICATION_REQUIRED":
+        case "VERIFICATION_NOT_FOUND":
+        case "PHONE_ALREADY_REGISTERED":
+          setPhoneVerified(false);
+          showError("phone", errorMessage(res.code));
+          break;
+        default:
+          showError("phone", errorMessage(res.code));
+          break;
+      }
+    } finally {
+      busyRef.current = false;
+    }
   };
 
   return (
@@ -150,9 +218,7 @@ export default function UserInput1Screen() {
             height={44}
             onChangeText={(value) => {
               setName(value);
-              setValidationMessage((current) =>
-                current === "name" ? null : current,
-              );
+              clearError("name");
             }}
             paddingHorizontal={17}
             placeholder="실명을 입력해 주세요"
@@ -160,8 +226,10 @@ export default function UserInput1Screen() {
             style={[styles.input, styles.nameInput]}
             value={name}
           />
-          {validationMessage === "name" ? (
-            <Text style={styles.nameError}>이름을 입력해 주세요</Text>
+          {validation?.field === "name" ? (
+            <Text style={styles.nameError}>
+              {validation.text ?? "이름을 입력해 주세요"}
+            </Text>
           ) : null}
 
           <Text style={[styles.fieldLabel, styles.ageLabel]}>
@@ -178,9 +246,7 @@ export default function UserInput1Screen() {
             keyboardType="number-pad"
             onChangeText={(value) => {
               setBirthDate(formatBirthDate(value));
-              setValidationMessage((current) =>
-                current === "birthDate" ? null : current,
-              );
+              clearError("birthDate");
             }}
             paddingHorizontal={17}
             placeholder="YYYY.MM.DD"
@@ -188,9 +254,9 @@ export default function UserInput1Screen() {
             style={[styles.input, styles.ageInput]}
             value={birthDate}
           />
-          {validationMessage === "birthDate" ? (
+          {validation?.field === "birthDate" ? (
             <Text style={styles.ageError}>
-              생년월일을 올바르게 입력해 주세요
+              {validation.text ?? "생년월일을 올바르게 입력해 주세요"}
             </Text>
           ) : (
             <Text style={styles.ageHint}>
@@ -211,11 +277,10 @@ export default function UserInput1Screen() {
             keyboardType="phone-pad"
             onChangeText={(value) => {
               setPhone(value.replace(/[^\d-]/g, ""));
+              verificationIdRef.current = null;
               setPhoneVerified(false);
               setVerificationRequested(false);
-              setValidationMessage((current) =>
-                current === "phone" ? null : current,
-              );
+              clearError("phone");
             }}
             paddingHorizontal={17}
             placeholder="010-0000-0000"
@@ -244,9 +309,7 @@ export default function UserInput1Screen() {
             onChangeText={(value) => {
               setVerificationCode(value.replace(/\D/g, ""));
               setPhoneVerified(false);
-              setValidationMessage((current) =>
-                current === "phone" ? null : current,
-              );
+              clearError("phone");
             }}
             paddingHorizontal={17}
             placeholder="인증번호 6자리"
@@ -262,13 +325,14 @@ export default function UserInput1Screen() {
           >
             <Text style={styles.smallButtonText}>확인</Text>
           </Pressable>
-          {validationMessage === "phone" ? (
-            <Text style={styles.phoneError}>휴대폰 인증을 완료해 주세요</Text>
+          {validation?.field === "phone" ? (
+            <Text style={styles.phoneError}>
+              {validation.text ?? "휴대폰 인증을 완료해 주세요"}
+            </Text>
           ) : null}
 
           <Text style={styles.privacyNote}>
-            목업으로 앱에만 입력되며,{"\n"}
-            보호소나 서버로 전송되지 않아요.
+            입력한 정보는 산책 봉사 신청 확인에 사용돼요.
           </Text>
 
           <OnboardingStepNavigation
@@ -395,6 +459,7 @@ const styles = StyleSheet.create({
     top: 434,
   },
   phoneError: {
+    width: 315,
     color: colors.warning,
     fontFamily: fontFamilies.nanumSquareRoundRegular,
     fontSize: typography.fontSizes.small,

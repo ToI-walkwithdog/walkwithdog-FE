@@ -3,10 +3,34 @@ import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { routeForStep, fetchMe } from "../../api/auth";
+import { resolveLocation } from "../../api/onboarding";
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
+
+const LOCATION_TIMEOUT_MS = 10_000;
+
+// 현재 위치의 지역을 확인한다. 결과는 아직 쓰는 곳이 없다(지역 선택 UI 대기).
+// 422 REGION_NOT_SUPPORTED, 503 GEOCODING_UNAVAILABLE, 위치 실패 모두 진행을 막지 않는다.
+// 좌표는 저장하거나 로그에 남기지 않는다.
+async function resolveCurrentRegion() {
+  try {
+    const position = await Promise.race([
+      Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      }),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), LOCATION_TIMEOUT_MS),
+      ),
+    ]);
+    if (!position) return;
+    await resolveLocation(position.coords.latitude, position.coords.longitude);
+  } catch {
+    // 위치를 얻지 못해도 계속 진행한다.
+  }
+}
 
 export default function UserInput5Screen() {
   const router = useRouter();
@@ -16,7 +40,18 @@ export default function UserInput5Screen() {
 
     const requestPermission = async () => {
       try {
-        await Location.requestForegroundPermissionsAsync();
+        // 온보딩이 끝나지 않았으면 서버 상태에 맞는 단계로 간다.
+        const me = await fetchMe();
+        if (me.ok && me.data.next_onboarding_step !== null) {
+          const route = routeForStep(me.data.next_onboarding_step);
+          if (route && active) router.replace(route);
+          return;
+        }
+
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.granted) {
+          await resolveCurrentRegion();
+        }
         if (active) {
           router.replace("/3");
         }
