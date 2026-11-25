@@ -158,7 +158,8 @@
 - 설정 화면: "목업" 문구가 없는지, 로그아웃 행
 - 로그아웃(마이페이지와 설정): 서버 호출 뒤 토큰과 로컬 상태 삭제, 로그인 화면 이동, 같은 계정으로 다시 로그인했을 때 이전 상태(산책, 예약, 이력, 임시 입력)가 남지 않는지
 - 로그아웃 중 서버에 닿지 않을 때(비행기 모드): 이 기기에서만 로그아웃했다는 안내 뒤에도 로컬 상태가 지워지는지
-- 산책 중 로그아웃 시도가 막히는지
+- 산책 중이고 보내지 못한 위치 기록이 있을 때 "그래도 로그아웃 (미전송 기록 삭제)" 확인이 한 번 더 뜨고, 그것을 고르면 로그아웃되는지.
+  그 밖의 경우(산책 중이어도 보내지 못한 기록이 없을 때 포함)는 확인 한 번으로 바로 로그아웃되는지
 - 본 레벨업 기록(`levelUpSeen`)이 로그아웃 뒤에도 계정별로 남는지
 
 ### 통계 매핑 적용
@@ -187,3 +188,16 @@
    (저장된 행이 없어 버전 0이다). 앱에서 저장하면 409가 나와야 한다.
 5. 닉네임 중복: 앱에서 10-2 닉네임을 `second_user`(두 번째 계정)로 바꿔 저장하면 409(`NICKNAME_ALREADY_EXISTS`)가 나와야 한다.
 
+
+### 문서와 코드 차이 (BE 담당자에게 알릴 것)
+- **프로필 번호 인증 경로:** 문서(`docs/HANDOFF-FE.md` 4.7, 5절)는 `/users/me/phone-verifications`라고 적었지만, 그것은 온보딩 인증 경로다.
+  프로필 번호 변경은 `POST /users/me/profile/phone-verifications`(발송)와 `POST /users/me/profile/phone-verifications/confirm`(확인)을 쓴다.
+  FE는 코드 기준인 프로필 경로를 쓴다. 문서의 "프로필 번호 변경도 같은 방식"이라는 문장이 경로까지 같다는 뜻으로 읽히지 않게 고쳐야 한다.
+- **문서에 없는 오류 코드:**
+  - 프로필 `PATCH`: 403 `PROFILE_UPDATE_NOT_ALLOWED`, 409 `PROFILE_BASIC_INFO_REQUIRED`, 422 `INVALID_PROFILE_PAYLOAD`, `NICKNAME_REQUIRED`, `REQUIRED_FIELD`
+    (문서는 `PROFILE_VERSION_MISMATCH`만 적었다. `NICKNAME_ALREADY_EXISTS`, `PHONE_VERIFICATION_REQUIRED`, `PHONE_ALREADY_REGISTERED`도 코드에만 있다)
+  - 프로필 인증 확인: 422 `INVALID_VERIFICATION_PAYLOAD`
+  - 선호 `PATCH`: 403 `PREFERENCE_NOT_ALLOWED`, 422 `INVALID_PREFERENCE_PAYLOAD`, `INVALID_DURATION`
+    (문서는 `PREFERENCE_VERSION_MISMATCH`만 적었다. 코드에서는 저장값이 같아도 버전이 다르면 409다)
+- **선호에는 지역이 없다:** 코드의 선호는 `duration_code`와 `size_code`뿐이고, `region_code` 등 다른 필드를 보내면 422다.
+  FE의 10-3은 지역을 저장하지 않고 "온보딩에서 고른 지역"이라는 고정 문구만 보여 준다. 문서의 지역 관련 설명(과 Notion 일부 명세)을 코드에 맞춰야 한다.
