@@ -140,19 +140,72 @@
 
 ## 9단계 마이페이지, 내 정보 수정, 선호, 로그아웃 (10-1~10-3, 설정)
 
-구현했고 타입 검사만 통과했다. 기기에서는 아직 아무것도 확인하지 않았다.
+구현했고 타입 검사만 통과했다. 앱 화면(기기)에서는 아직 아무것도 확인하지 않았다. 백엔드 시나리오는 API 수준에서 확인했다(아래).
 `MockSession`과 `src/data/*`는 더 이상 쓰는 곳이 없어 삭제했다.
 
 ### 기기에서 확인함
-- 없음
+- 없음 (앱 화면에서는 아직 확인하지 않았다)
 
-### 미확인
+### API 수준에서 확인함 (인증된 호출, 로컬 BE, 2026-11-25, 앱 UI에서는 미확인)
+임시 계정 4개를 실제 API(가입, 로그인, 서약, 온보딩 번호 인증, 기본 정보)로 만들어 확인했고, 스크립트는 지웠다. 총 41개 점검 중 38개가 기대대로였고,
+나머지 3개는 아래 "기대가 틀렸던 점검"에 설명했다(BE 동작은 문서와 일치했다).
+
+| 시나리오 | 기대 | 실제 상태 / code | FE 처리와 일치 |
+|---|---|---|---|
+| `GET /users/me/profile` 필드 | nickname, full_name, phone_number(국내 표기), phone_verified_at, profile_version | 200, 모두 있음 | 예 |
+| `GET /volunteers/me` 필드 | user_id, level, history_* | 200, 모두 있음 | 예 |
+| `GET /users/me` | nickname | 200 | 예 |
+| 닉네임 변경, 현재 버전 | 200, 버전 +1, changed_fields=[nickname] | 200 | 예 |
+| 같은 변경, 옛 버전 | 409 `PROFILE_VERSION_MISMATCH` | 409 `PROFILE_VERSION_MISMATCH` | 예(최신 조회 후 선택 창) |
+| 닉네임 = 다른 계정 닉네임 | 409 `NICKNAME_ALREADY_EXISTS` | 409 `NICKNAME_ALREADY_EXISTS` | 예(닉네임 칸 아래 문구) |
+| 이름 변경 | 200 | 200 | 예 |
+| 빈 닉네임 | 422 `NICKNAME_REQUIRED` | 422 `NICKNAME_REQUIRED` | 예 |
+| 버전 없이 PATCH | 422 `INVALID_PROFILE_PAYLOAD` | 422 `INVALID_PROFILE_PAYLOAD` | 예(기본 알림, 문구 있음) |
+| 번호 변경, 인증 없이 | 409 `PHONE_VERIFICATION_REQUIRED` | 409 `PHONE_VERIFICATION_REQUIRED` | 예 |
+| 프로필 번호 인증 발송(010-0000-0002) | 200, verification_id, expires_in_seconds, resend_after_seconds | 200 | 예 |
+| 인증번호 확인, 틀린 코드 | 422 `VERIFICATION_CODE_INVALID` | 422 `VERIFICATION_CODE_INVALID` | 예(번호 영역 문구) |
+| 인증번호 확인, 맞는 코드(123456) | 200 | 200 | 예 |
+| 번호 저장(인증 id 포함) | 200, 새 번호 | 200, 새 번호 | 예 |
+| 같은 번호·이미 쓴 id로 다시 저장 | 200 또는 409 | 200 | 예 |
+| 인증은 마쳤으나 다른 계정이 그 사이 등록한 번호로 저장 | 409 `PHONE_ALREADY_REGISTERED` | 409 `PHONE_ALREADY_REGISTERED` | 예(인증을 새로 받게 함) |
+| 확인하지 않은 id로 번호 저장 | 409 `PHONE_VERIFICATION_REQUIRED` | 409 `PHONE_VERIFICATION_REQUIRED` | 예 |
+| 확인에 잘못된 형식의 verification_id | 422 | 422 `INVALID_VERIFICATION_PAYLOAD` | 예 |
+| 선호 조회(저장 전) | configured=false, version=0 | 200, 같음 | 예 |
+| 선호 첫 저장 expected_version=0 | 200 | 200 | 예 |
+| 같은 값, 옛 버전 | 409 `PREFERENCE_VERSION_MISMATCH` | 409 `PREFERENCE_VERSION_MISMATCH` | 예(선택 창) |
+| 잘못된 duration_code | 422 `INVALID_DURATION` | 422 `INVALID_DURATION` | 예(기본 알림, 앱 UI로는 만들 수 없음) |
+| 잘못된 size_code | 422 `INVALID_DOG_SIZE` | 422 `INVALID_DOG_SIZE` | 예(같음) |
+| region_code 포함 | 422 `INVALID_PREFERENCE_PAYLOAD` | 422 `INVALID_PREFERENCE_PAYLOAD` | 예(앱은 지역을 보내지 않는다) |
+| 필드 없음 / null | 422 `INVALID_PREFERENCE_PAYLOAD` | 422 `INVALID_PREFERENCE_PAYLOAD` | 예 |
+| 선호 조회, 저장 뒤 | 저장한 값, 버전 1 | UP_TO_30_MIN / SMALL, v1 | 예 |
+| 현재 버전으로 변경 / 같은 값 재저장 | 200 / 200, 버전 그대로 | 200 / 200 (v2 유지) | 예 |
+| `POST /auth/logout` | 200 | 200 | 예 |
+| 같은 토큰으로 다시 로그아웃 | 401 `INVALID_ACCESS_TOKEN` | 401 `INVALID_ACCESS_TOKEN` | 예(401은 정상으로 보고 계속) |
+| 로그아웃한 토큰으로 `GET /users/me` | 401 | 401 `INVALID_ACCESS_TOKEN` | 예(로그인 화면으로) |
+| 로그아웃 뒤 다시 로그인 | 200 | 200 | 예 |
+
+**기대가 틀렸던 점검 (BE 동작은 정상)**
+- *다른 계정이 쓰는 번호로 인증:* 처음에는 "인증은 통과하고 저장에서 409"를 기대했지만, BE는 이미 등록된 번호의 요청을 보내지 않은 것으로 저장하고(`SUPPRESSED`)
+  절대 인증되지 않게 한다(#110, 번호 등록 여부를 숨기려는 정책). 그래서 발송은 200이지만 **인증번호 확인이 422 `VERIFICATION_CODE_INVALID`**가 되고,
+  그 id로 저장하면 409 `PHONE_VERIFICATION_REQUIRED`다. 앱에서는 "인증번호가 맞지 않아요"로 보이며 5번 틀리면 429 `VERIFICATION_ATTEMPTS_EXCEEDED`다.
+  `PHONE_ALREADY_REGISTERED`는 인증을 먼저 마친 뒤 다른 계정이 그 번호를 등록한 경우에만 나오며, 위 표의 해당 줄은 그 경우를 따로 만들어 확인했다.
+- *짧은 인증번호:* 6자리가 아니면 422 `INVALID_VERIFICATION_PAYLOAD`다(형식 검사). 앱은 6자리가 아니면 보내지 않고 같은 문구를 보여 준다.
+
+**코드별 문구와 화면 처리 점검:** 위에서 본 코드는 모두 `errorMessages.ts`에 문구가 있다. 예외는 `INVALID_ACCESS_TOKEN` 하나로, 문구는 없지만 401을
+HTTP 상태로 처리한다(클라이언트가 토큰을 지우고 로그인 화면으로 보내며, 로그아웃은 401을 정상으로 본다). 핸들러가 없는 코드는 없다.
+`INVALID_PROFILE_PAYLOAD`, `INVALID_DURATION`, `INVALID_DOG_SIZE`, `INVALID_PREFERENCE_PAYLOAD`, `VERIFICATION_CODE_INVALID`는 화면에 전용 분기는 없고
+기본 경로(`errorMessage(code)`)로 문구를 보여 준다.
+
+**API 수준에서도 아직 확인하지 않은 것:** 인증번호 만료(410, 5분 대기 필요), 확인 뒤 15분이 지난 인증, 인증 시도 5회 초과(429), 발송 일일 한도와 재발송 대기(429), 이름 변경 시 Step 1 없는 계정(409).
+
+### 미확인 (앱 화면에서)
 - 10-1 마이페이지: 닉네임(`GET /users/me`), 통계 카드(`history_walk_count`, `history_distance_m`, `history_unique_dog_count`), 레벨(`level`),
   거리 일부 미확인 표시(`history_distance_is_complete`가 false일 때), 로딩, 오류와 다시 시도, 당겨서 새로고침, 내 정보 수정에서 돌아오면 닉네임 갱신
 - 10-2 내 정보 수정: 프로필 불러오기, 닉네임 변경 저장, 이름 변경 저장(온보딩 Step 1을 마친 계정), 바뀐 필드만 전송, 저장 응답 뒤에 화면 닫기
 - 10-2 번호 변경 전 과정: 새 번호 입력, 인증 요청(`/users/me/profile/phone-verifications`), 인증번호 확인, 저장(`phone_number` + `phone_verification_id`)
-- 10-2 번호 변경 오류: 다른 계정이 쓰는 번호(409 `PHONE_ALREADY_REGISTERED`), 인증 없이 저장(409 `PHONE_VERIFICATION_REQUIRED`),
-  틀린 인증번호(422 `VERIFICATION_CODE_INVALID`), 만료(410), 15분이 지난 인증, 닉네임 중복(409 `NICKNAME_ALREADY_EXISTS`)
+- 10-2 번호 변경 오류: 다른 계정이 쓰는 번호(인증번호 확인이 422 `VERIFICATION_CODE_INVALID`로 실패), 인증 없이 저장(409 `PHONE_VERIFICATION_REQUIRED`),
+  틀린 인증번호(422 `VERIFICATION_CODE_INVALID`), 만료(410), 15분이 지난 인증, 닉네임 중복(409 `NICKNAME_ALREADY_EXISTS`).
+  `PHONE_ALREADY_REGISTERED` 화면 처리는 API로만 만들 수 있다(인증을 마친 뒤 다른 계정이 그 번호를 등록해야 함)
 - 10-2 버전 충돌(409 `PROFILE_VERSION_MISMATCH`): 최신 프로필을 보여 주고 "서버 값 보기 / 내 입력으로 저장 / 닫기"를 고르게 하는지(조용히 덮어쓰지 않는다)
 - 10-3 산책 선호: 불러오기(저장값 없으면 온보딩 값), 저장, 버전 충돌(409 `PREFERENCE_VERSION_MISMATCH`)과 선택 화면, 저장 응답 뒤에 화면 닫기
 - 설정 화면: "목업" 문구가 없는지, 로그아웃 행
@@ -167,27 +220,27 @@
 함께한 강아지 `history_unique_dog_count`, 레벨 `level`. `total_*`와 `total_duration_seconds`는 쓰지 않는다.
 
 ### 테스트 데이터 준비
-현재 로컬 DB: 봉사자 `snsns`(닉네임 `eksks`, 번호 010-0000-0001, 프로필 버전 1), 보호소 `shelter01`. 산책 선호는 아직 저장된 행이 없다(버전 0).
-번호는 합성 번호 010-0000-0000~9999만 쓸 수 있고, 로컬 BE의 고정 인증번호는 `123456`이다(`SMS_MOCK_FIXED_CODE`).
+스크립트가 임시 계정을 만들었다(비밀번호는 저장하지 않았으므로 이 계정들로는 로그인할 수 없다). 현재 로컬 DB(2026-11-25):
 
-1. 번호 변경 성공: 새 번호 `010-0000-0002`로 변경한다(인증번호 `123456`). 변경 뒤 10-2에 새 번호가 보이고 프로필 버전이 올라가야 한다.
-2. 다른 계정 번호 409(`PHONE_ALREADY_REGISTERED`): 두 번째 봉사자 계정이 번호 `010-0000-0003`을 갖게 만든 뒤, 첫 번째 계정에서
-   `010-0000-0003`으로 인증을 받고 저장한다. 인증 요청과 확인은 통과하고 저장에서 409가 나와야 한다(`#110` 정책).
-   두 번째 계정 만들기(Swagger, 모두 이 앱의 가입·온보딩과 같은 API):
-   - `POST /users/` `{"login_id":"second01","nickname":"second_user","password":"<15자 이상, 대소문자·숫자·특수문자 포함>",
-     "privacy":{"document_version":"privacy-test-v1","age_14_plus_confirmed":true,"collection_use_agreed":true,"ai_overseas_transfer_agreed":false}}`
-   - `POST /auth/login` `{"identifier":"second01","password":"..."}` 로 토큰을 받아 Authorize에 넣는다.
-   - `PUT /users/me/pledge` `{"pledge_version":"pledge-local-v1"}`
-   - `POST /users/me/phone-verifications` `{"phone_number":"010-0000-0003"}` → 응답의 `verification_id`
-   - `POST /users/me/phone-verifications/confirm` `{"verification_id":"<위 값>","code":"123456"}`
-   - `PUT /users/me/onboarding/basic-info` `{"full_name":"홍길동","birth_date":"1995-05-05","phone_verification_id":"<위 값>"}`
-   위 본문은 FE 코드와 BE 스키마를 읽어 정리한 것이며 실제로 호출해 확인하지는 않았다. 정책 변수가 다르면 `PRIVACY_DOCUMENT_VERSION`, `PLEDGE_CURRENT_VERSION`을 BE `.env`에서 확인한다.
-3. 프로필 버전 충돌: 앱에서 10-2를 연 채로, Swagger에서 첫 번째 계정(`snsns`) 토큰으로 `GET /users/me/profile`을 읽어 `profile_version`을 확인한 뒤
+| 계정 | 닉네임 | 번호 | 프로필 버전 |
+|---|---|---|---|
+| `snsns`(앱 테스트용) | `eksks` | 010-0000-0001 | 1 |
+| `tmpb82blej` | `tmp_b_1pct` | 010-0000-0003 | 1 |
+| `tmpahj1q0z` | `tmp_a2_1pct` | 010-0000-0002 | 4 |
+| `tmpc6ixv3k` | `tmp_c_6ixv3k` | 010-0000-0006 | 1 |
+| `tmpdc3fj64` | `tmp_d_c3fj64` | 010-0000-0007 | 1 |
+
+산책 선호는 `snsns`에 저장된 행이 없다(버전 0). 번호는 합성 번호 010-0000-0000~9999만 쓸 수 있고, 로컬 BE의 고정 인증번호는 `123456`이다.
+010-0000-0002는 이제 임시 계정이 쓰고 있어 앱 테스트에는 쓸 수 없다.
+
+1. 번호 변경 성공: `snsns`로 새 번호 `010-0000-0008`로 변경한다(인증번호 `123456`). 변경 뒤 10-2에 새 번호가 보이고 프로필 버전이 올라가야 한다.
+2. 다른 계정이 쓰는 번호: `010-0000-0003`(또는 0002, 0006, 0007)으로 인증을 요청하면 발송은 200이지만 인증번호 확인이 "인증번호가 맞지 않아요"로 실패해야 한다
+   (BE가 등록 여부를 숨기려고 일부러 인증되지 않게 한다. 5번 틀리면 429).
+3. 프로필 버전 충돌: 앱에서 10-2를 연 채로, Swagger에서 `snsns` 토큰으로 `GET /users/me/profile`을 읽어 `profile_version`을 확인한 뒤
    `PATCH /users/me/profile` `{"expected_profile_version":<현재 값>,"nickname":"conflict_nick"}`을 한 번 보낸다. 앱에서 다른 값을 고쳐 저장하면 409가 나와야 한다.
 4. 선호 버전 충돌: 앱에서 10-3을 연 채로 Swagger에서 `PATCH /users/me/walk-preferences` `{"expected_version":0,"duration_code":"OVER_60_MIN"}`을 한 번 보낸다
    (저장된 행이 없어 버전 0이다). 앱에서 저장하면 409가 나와야 한다.
-5. 닉네임 중복: 앱에서 10-2 닉네임을 `second_user`(두 번째 계정)로 바꿔 저장하면 409(`NICKNAME_ALREADY_EXISTS`)가 나와야 한다.
-
+5. 닉네임 중복: 앱에서 10-2 닉네임을 `tmp_b_1pct`로 바꿔 저장하면 409(`NICKNAME_ALREADY_EXISTS`)가 나와야 한다.
 
 ### 문서와 코드 차이 (BE 담당자에게 알릴 것)
 - **프로필 번호 인증 경로:** 문서(`docs/HANDOFF-FE.md` 4.7, 5절)는 `/users/me/phone-verifications`라고 적었지만, 그것은 온보딩 인증 경로다.
