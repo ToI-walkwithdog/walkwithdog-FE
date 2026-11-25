@@ -25,6 +25,9 @@ import { walkGuideCards } from "./walkGuideContent";
 const pawStamp = require("../../assets/images/paw-1.png");
 
 const PAGE_WIDTH = 375;
+// 발바닥 글머리는 원본(paw-1.png, 512x512)과 같은 1:1이다. 가로와 세로에 같은 값을 쓴다.
+const PAW_SIZE = 20;
+const POINT_LINE_HEIGHT = 22;
 const LAST = walkGuideCards.length - 1;
 
 // 첫 산책 가이드. Figma 시안이 없어 서약 화면(1-6)의 배경, 카드, 발바닥 글머리와 같은 모양으로 만들었다.
@@ -112,7 +115,7 @@ export default function WalkGuideScreen() {
                 <View style={styles.card}>
                   {card.points.map((point) => (
                     <View key={point} style={styles.pointRow}>
-                      <Image accessible={false} resizeMode="contain" source={pawStamp} style={styles.bulletPaw} />
+                      <Image accessible={false} source={pawStamp} style={styles.bulletPaw} />
                       <Text style={styles.pointText}>{point}</Text>
                     </View>
                   ))}
@@ -217,16 +220,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   bulletPaw: {
-    height: 24,
-    marginRight: 10,
-    width: 24,
+    alignSelf: "flex-start",
+    aspectRatio: 1,
+    height: PAW_SIZE,
+    // 첫 줄의 세로 가운데에 맞춘다.
+    marginTop: (POINT_LINE_HEIGHT - PAW_SIZE) / 2,
+    marginRight: 12,
+    resizeMode: "contain",
+    width: PAW_SIZE,
   },
   pointText: {
     color: colors.pledgeText,
     flex: 1,
     fontFamily: fontFamilies.pretendardRegular,
     fontSize: typography.fontSizes.bodyLarge,
-    lineHeight: 22,
+    lineHeight: POINT_LINE_HEIGHT,
   },
   dots: {
     alignItems: "center",
