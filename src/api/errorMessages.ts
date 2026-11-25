@@ -94,6 +94,24 @@ const MESSAGES: Record<string, string> = {
   CANCEL_TIME_EXPIRED: "예약 시작 시간이 되어 취소할 수 없어요.",
   WALK_RECORD_EXISTS: "산책이 이미 시작되어 취소할 수 없어요.",
   REQUEST_LOCK_CONFLICT: "다른 작업과 겹쳤어요. 잠시 후 다시 시도해 주세요.",
+
+  // 4-x 보호소 코드
+  INVALID_SHELTER_CODE_FORMAT: "6자리 숫자 코드를 입력해 주세요.",
+  INVALID_WALK_REQUEST_ID: "예약 정보를 확인해 주세요.",
+  SHELTER_CODE_INVALID: "코드가 맞지 않거나 만료되었어요.",
+  SHELTER_CODE_RATE_LIMITED: "코드를 여러 번 잘못 입력했어요. 잠시 후 다시 입력해 주세요.",
+  WALK_REQUEST_NOT_FOUND: "예약을 찾을 수 없어요.",
+  WALK_REQUEST_NOT_ELIGIBLE: "지금은 보호소 코드를 사용할 수 없는 예약이에요. 예약 상태를 확인해 주세요.",
+
+  // 4-4 산책 시작
+  WALK_START_CODE_REQUIRED: "보호소 코드를 다시 확인해 주세요.",
+  WALK_START_BOOKING_NOT_ELIGIBLE: "지금은 산책을 시작할 수 없는 예약이에요.",
+  WALK_START_ALREADY_STARTED: "이미 산책 중이에요.",
+  WALK_START_RETRYABLE: RETRY_LATER,
+
+  // 5-x 산책 중
+  MARKER_LOCATION_UNAVAILABLE: "위치를 확인할 수 없어 저장하지 못했어요. 잠시 후 다시 눌러 주세요.",
+  DUPLICATE_RECENT: "방금 같은 유형의 신고를 보냈어요.",
 };
 
 export function errorMessage(code: string | null | undefined): string {

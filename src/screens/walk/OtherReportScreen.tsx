@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { INCIDENT_DESCRIPTION_MAX } from "../../api/walkCodes";
+import { prepareIncident } from "../../api/walkTracker";
 import { Icon } from "../../components/Icon";
 import { GradientView } from "../../components/GradientView";
 import { PillTextInput } from "../../components/PillTextInput";
@@ -9,19 +11,37 @@ import { Screen } from "../../components/Screen";
 import { gradientButtonWarm } from "../../theme/gradients";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
+import { sendPendingIncident } from "./walkFlow";
 
 export default function OtherReportScreen() {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [validationMessage, setValidationMessage] = useState("");
 
-  const submitReport = () => {
-    if (!message.trim()) {
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
+
+  // 기타 신고는 사용자가 쓴 설명이 필수다(trim 후 1~1,000자). 한 번 만든 신고는 재전송에도 같은 키를 쓴다.
+  const submitReport = async () => {
+    const text = message.trim();
+    if (!text) {
       setValidationMessage("메시지를 입력해 주세요.");
       return;
     }
-
-    router.push({ pathname: "/5-6", params: { report: "기타" } });
+    if (text.length > INCIDENT_DESCRIPTION_MAX) {
+      setValidationMessage(`메시지는 ${INCIDENT_DESCRIPTION_MAX}자 이하로 입력해 주세요.`);
+      return;
+    }
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    try {
+      prepareIncident("기타", "OTHER", text);
+      await sendPendingIncident(router);
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
   };
 
   const cancelReport = () => router.back();
@@ -86,10 +106,12 @@ export default function OtherReportScreen() {
             <Pressable
               accessibilityLabel="전송하기"
               accessibilityRole="button"
-              onPress={submitReport}
-              style={styles.sendPressable}
+              accessibilityState={{ disabled: sending }}
+              disabled={sending}
+              onPress={() => void submitReport()}
+              style={[styles.sendPressable, sending && styles.sendingButton]}
             >
-              <Text style={styles.sendButtonText}>전송하기</Text>
+              <Text style={styles.sendButtonText}>{sending ? "전송 중..." : "전송하기"}</Text>
             </Pressable>
           </GradientView>
           <Pressable
@@ -107,6 +129,9 @@ export default function OtherReportScreen() {
 }
 
 const styles = StyleSheet.create({
+  sendingButton: {
+    opacity: 0.5,
+  },
   root: {
     flex: 1,
     width: "100%",

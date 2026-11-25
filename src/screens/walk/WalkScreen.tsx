@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Animated,
@@ -10,10 +10,29 @@ import {
   View,
 } from "react-native";
 
+import { routeForFailure } from "../../api/auth";
+import type { ApiFailure } from "../../api/client";
+import { errorMessage } from "../../api/errorMessages";
+import { fetchWalkRequestDetail } from "../../api/walkRequests";
+import { incidentTypeForLabel, MARKER_ITEMS } from "../../api/walkCodes";
+import { getWalkContext, setWalkContext, type WalkContext } from "../../api/walkSession";
+import { fetchActiveWalk } from "../../api/walks";
+import {
+  attachWalk,
+  discardWalk,
+  GPS_LOST_AFTER_MS,
+  pauseTracking,
+  prepareIncident,
+  resumeTracking,
+  sendMarker,
+  startLocation,
+} from "../../api/walkTracker";
 import { Icon } from "../../components/Icon";
 import { GradientView } from "../../components/GradientView";
 import { Screen } from "../../components/Screen";
-import { useMockSession } from "../../context/MockSession";
+import { dogImageSource } from "../../utils/dogImage";
+import { endWalkWithConfirm, sendPendingIncident } from "./walkFlow";
+import { useWalkTracker } from "./useWalkTracker";
 import WalkRouteLine from "../../assets/icons/walk-route-line.svg";
 import WalkRouteLocation from "../../assets/icons/walk-route-location.svg";
 import WalkRouteDot from "../../assets/icons/walk-route-dot.svg";
@@ -24,7 +43,6 @@ import { fontFamilies } from "../../theme/typography";
 import { gradientButtonWarm, gradientCardCream } from "../../theme/gradients";
 
 const walkingMap = require("../../assets/images/walking-map.png");
-const kongiImage = require("../../assets/images/dog-kongi.png");
 const USE_WALK_MAP_MOCKUP =
   process.env.EXPO_PUBLIC_WALK_MAP_MOCKUP !== "false";
 const KakaoWalkMap = lazy(() =>
@@ -65,13 +83,141 @@ const plusItems = [
 export default function WalkScreen({ initialState = "active" }: WalkScreenProps) {
   const router = useRouter();
   const { closeReport } = useLocalSearchParams<{ closeReport?: string }>();
-  const { addMarker } = useMockSession();
   const [state, setState] = useState<WalkState>(initialState);
-  const walkStats = {
-    time: "24:15",
-    distance: "1.8 km",
-    averageSpeed: "4.5 km/h",
+  const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
+  const [loadFailure, setLoadFailure] = useState<ApiFailure | null>(null);
+  const [context, setContext] = useState<WalkContext | null>(getWalkContext());
+  const [markerBusy, setMarkerBusy] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [endBusy, setEndBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const markerBusyRef = useRef(false);
+  const reportBusyRef = useRef(false);
+  const mountedAt = useRef(Date.now());
+  const gpsLostShown = useRef(false);
+  const { snapshot, now, stats: walkStats } = useWalkTracker();
+
+  // 서버의 진행 중인 산책을 불러와 이어 받는다. 앱을 다시 열었을 때도 같은 경로로 복구한다.
+  const loadWalk = useCallback(async () => {
+    setPhase("loading");
+    const active = await fetchActiveWalk();
+    if (!active.ok) {
+      const route = await routeForFailure(active);
+      if (route) {
+        router.replace(route);
+        return;
+      }
+      if (active.status === 404) {
+        // 진행 중인 산책이 없다(이미 종료됨). 코드가 아니라 HTTP 상태로 나눈다.
+        discardWalk();
+        Alert.alert("알림", "진행 중인 산책이 없어요.", [
+          { text: "확인", onPress: () => router.replace("/3") },
+        ]);
+        return;
+      }
+      setLoadFailure(active);
+      setPhase("error");
+      return;
+    }
+    attachWalk(active.data);
+    void startLocation();
+    if (initialState === "paused") pauseTracking();
+    setPhase("ready");
+    const cached = getWalkContext();
+    if (cached && cached.walkRequestId === active.data.walk_request_id) {
+      setContext(cached);
+      return;
+    }
+    const detail = await fetchWalkRequestDetail(active.data.walk_request_id);
+    if (detail.ok) {
+      const next: WalkContext = {
+        walkRequestId: detail.data.id,
+        dogName: detail.data.dog.name,
+        imageUrl: detail.data.dog.image_url,
+        shelterName: detail.data.shelter?.name ?? detail.data.shelter_name ?? "",
+        shelterPhone: detail.data.confirmed_visit?.phone ?? null,
+      };
+      setWalkContext(next);
+      setContext(next);
+    }
+  }, [initialState, router]);
+
+  useEffect(() => {
+    void loadWalk();
+  }, [loadWalk]);
+
+  // 서버가 산책을 끝냈거나(무수신 자동 종료) 로그인이 끊겼으면 이어 갈 수 없다.
+  useEffect(() => {
+    if (snapshot.authLost) {
+      router.replace("/1-2");
+    } else if (snapshot.walkEnded) {
+      discardWalk();
+      Alert.alert("알림", "산책이 자동으로 종료됐어요.", [
+        { text: "확인", onPress: () => router.replace("/6-1") },
+      ]);
+    }
+  }, [router, snapshot.authLost, snapshot.walkEnded]);
+
+  // 새 위치가 한동안 없으면 GPS 끊김 화면(5-3)으로 안내한다. 신호가 돌아오면 다시 안내할 수 있다.
+  // 화면이 열린 시각부터 한 번은 기다린다. 5-3에서 돌아왔을 때 바로 다시 안내하지 않게 한다.
+  const lastSignalAt = Math.max(snapshot.lastFixReceivedAt ?? 0, mountedAt.current);
+  const gpsLost =
+    phase === "ready" && !snapshot.paused && now - lastSignalAt > GPS_LOST_AFTER_MS;
+  useEffect(() => {
+    if (!gpsLost) {
+      gpsLostShown.current = false;
+      return;
+    }
+    if (!gpsLostShown.current) {
+      gpsLostShown.current = true;
+      router.push("/5-3");
+    }
+  }, [gpsLost, router]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 1800);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  const saveMarker = async (label: string) => {
+    const item = MARKER_ITEMS.find((candidate) => candidate.label === label);
+    if (!item || markerBusyRef.current) return;
+    markerBusyRef.current = true;
+    setMarkerBusy(true);
+    try {
+      const result = await sendMarker(item);
+      if (result.ok) {
+        setState("active");
+        setNotice(`${label}을(를) 기록했어요.`);
+        return;
+      }
+      const route = await routeForFailure(result);
+      if (route) {
+        router.replace(route);
+        return;
+      }
+      Alert.alert("알림", errorMessage(result.code));
+    } finally {
+      markerBusyRef.current = false;
+      setMarkerBusy(false);
+    }
   };
+
+  const submitReport = async (label: string) => {
+    const type = incidentTypeForLabel(label);
+    if (!type || reportBusyRef.current) return;
+    reportBusyRef.current = true;
+    setReportBusy(true);
+    try {
+      prepareIncident(label, type);
+      await sendPendingIncident(router);
+    } finally {
+      reportBusyRef.current = false;
+      setReportBusy(false);
+    }
+  };
+
   const sheetTranslateY = useRef(new Animated.Value(683)).current;
   const plusTranslateX = useRef(new Animated.Value(164)).current;
   const plusOpacity = useRef(new Animated.Value(0)).current;
@@ -115,6 +261,44 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
     }
   }, [plusOpacity, plusTranslateX, state]);
 
+  if (phase !== "ready") {
+    return (
+      <Screen
+        backgroundColor={colors.walkBackgroundStart}
+        safeAreaEdges={[]}
+        testID="screen-5-1"
+      >
+        <View style={styles.loadState}>
+          <Text style={styles.loadStateText}>
+            {phase === "error" ? errorMessage(loadFailure?.code) : "산책을 불러오는 중..."}
+          </Text>
+          {phase === "error" ? (
+            <>
+              <Pressable
+                accessibilityLabel="다시 시도"
+                accessibilityRole="button"
+                onPress={() => void loadWalk()}
+                style={styles.loadStateButton}
+              >
+                <Text style={styles.loadStateButtonText}>다시 시도</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="홈으로"
+                accessibilityRole="button"
+                onPress={() => router.replace("/3")}
+                style={styles.loadStateButton}
+              >
+                <Text style={styles.loadStateButtonText}>홈으로</Text>
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+      </Screen>
+    );
+  }
+
+  const profileSource = dogImageSource(context?.imageUrl);
+
   return (
     <Screen
       backgroundColor={colors.walkBackgroundStart}
@@ -133,8 +317,16 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
         <View style={styles.contentFrame}>
           <View style={styles.profileRow}>
             <View style={styles.profilePill}>
-              <Image accessible={false} resizeMode="cover" source={kongiImage} style={styles.profileDog} />
-              <Text style={styles.profileText}>콩이 · 행복 보호소</Text>
+              {profileSource ? (
+                <Image accessible={false} resizeMode="cover" source={profileSource} style={styles.profileDog} />
+              ) : (
+                <View style={styles.profileDog}>
+                  <Icon name="icon-dog" size={20} width={20} height={20} color={colors.brown2} />
+                </View>
+              )}
+              <Text numberOfLines={1} style={styles.profileText}>
+                {context ? `${context.dogName} · ${context.shelterName}` : "산책 중"}
+              </Text>
             </View>
             <Pressable
               accessibilityLabel="신고"
@@ -218,11 +410,9 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
                     <Pressable
                       accessibilityLabel={item.label}
                       accessibilityRole="button"
-                      onPress={() => {
-                        addMarker(item.label);
-                        setState("active");
-                        Alert.alert("목업 기록", `${item.label} 항목을 저장했어요. 위치는 기록되지 않아요.`);
-                      }}
+                      accessibilityState={{ disabled: markerBusy }}
+                      disabled={markerBusy}
+                      onPress={() => void saveMarker(item.label)}
                       style={styles.plusMenuButton}
                     >
                       <View style={styles.plusMenuIcon}>
@@ -301,7 +491,10 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
               <Pressable
                 accessibilityLabel="이어 걷개"
                 accessibilityRole="button"
-                onPress={() => setState("active")}
+                onPress={() => {
+                  void resumeTracking();
+                  setState("active");
+                }}
                 style={styles.resumeButton}
               >
                 <Icon
@@ -317,7 +510,10 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
                 <Pressable
                   accessibilityLabel="정지하개"
                   accessibilityRole="button"
-                  onPress={() => setState("paused")}
+                  onPress={() => {
+                    pauseTracking();
+                    setState("paused");
+                  }}
                   style={[styles.controlPressable, styles.pauseControlPressable]}
                 >
                   <Icon
@@ -334,18 +530,23 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
               <Pressable
                 accessibilityLabel="종료"
                 accessibilityRole="button"
-                onPress={() => {
-                  setState("ended");
-                  router.push("/6-1");
-                }}
+                accessibilityState={{ disabled: endBusy }}
+                disabled={endBusy}
+                onPress={() => endWalkWithConfirm(router, setEndBusy)}
                 style={styles.controlPressable}
               >
                 <Icon name="icon-stop" width={16} height={16} color={colors.brown} />
-                <Text style={styles.stopText}>종료</Text>
+                <Text style={styles.stopText}>{endBusy ? "종료 중..." : "종료"}</Text>
               </Pressable>
             </GradientView>
           </View>
         </View>
+
+        {notice ? (
+          <View pointerEvents="none" style={styles.notice}>
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        ) : null}
 
         {hasBottomSheet ? (
           <>
@@ -362,9 +563,10 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
               ]}
             >
               <ReportSheet
+                busy={reportBusy}
                 onClose={() => setState("active")}
                 onOther={() => router.push("/5-5-other")}
-                onResult={(report) => router.push({ pathname: "/5-6", params: { report } })}
+                onResult={(report) => void submitReport(report)}
               />
             </Animated.View>
           </>
@@ -375,10 +577,12 @@ export default function WalkScreen({ initialState = "active" }: WalkScreenProps)
 }
 
 function ReportSheet({
+  busy,
   onClose,
   onOther,
   onResult,
 }: {
+  busy: boolean;
   onClose: () => void;
   onOther: () => void;
   onResult: (report: string) => void;
@@ -413,7 +617,7 @@ function ReportSheet({
     <View style={styles.reportSheetContent}>
       <View style={styles.sheetHandle} />
       <Text style={styles.reportTitle}>어떤 상황인가요?</Text>
-      <Text style={styles.reportSubtitle}>신고 전송과 위치 전달은 아직 연결되지 않았어요.</Text>
+      <Text style={styles.reportSubtitle}>신고하면 보호소에 바로 전달돼요.</Text>
       {options.map((option, index) => (
         <Pressable
           key={option.label}
@@ -459,14 +663,16 @@ function ReportSheet({
       <Pressable
         accessibilityLabel={isOtherSelected ? "메시지 작성" : "신고 확인"}
         accessibilityRole="button"
+        accessibilityState={{ disabled: busy }}
+        disabled={busy}
         onPress={continueReport}
-        style={styles.callButton}
+        style={[styles.callButton, busy && styles.busyButton]}
       >
         {isOtherSelected ? null : (
           <Icon name="icon-phone" width={24} height={24} color={colors.brown} />
         )}
         <Text style={styles.callButtonText}>
-          {isOtherSelected ? "메시지 작성" : "신고 확인"}
+          {busy ? "전송 중..." : isOtherSelected ? "메시지 작성" : "신고 확인"}
         </Text>
       </Pressable>
       <Pressable accessibilityLabel="취소" accessibilityRole="button" onPress={onClose} style={styles.cancelButton}>
@@ -477,6 +683,52 @@ function ReportSheet({
 }
 
 const styles = StyleSheet.create({
+  loadState: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    width: "100%",
+  },
+  loadStateText: {
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: typography.fontSizes.bodyLarge,
+    lineHeight: 22,
+    textAlign: "center",
+    width: 300,
+  },
+  loadStateButton: {
+    alignItems: "center",
+    backgroundColor: colors.cream,
+    borderRadius: 27,
+    height: 44,
+    justifyContent: "center",
+    marginTop: 12,
+    width: 200,
+  },
+  loadStateButtonText: {
+    color: colors.brown,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: typography.fontSizes.bodyLarge,
+  },
+  notice: {
+    alignSelf: "center",
+    backgroundColor: colors.brown,
+    borderRadius: 20,
+    bottom: 130,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    position: "absolute",
+    zIndex: 60,
+  },
+  noticeText: {
+    color: colors.white,
+    fontFamily: fontFamilies.nanumSquareRoundBold,
+    fontSize: typography.fontSizes.body,
+  },
+  busyButton: {
+    opacity: 0.5,
+  },
   root: {
     flex: 1,
     width: "100%",
@@ -508,8 +760,10 @@ const styles = StyleSheet.create({
     width: 232,
   },
   profileDog: {
+    alignItems: "center",
     borderRadius: 13,
     height: 26,
+    justifyContent: "center",
     width: 26,
   },
   profileText: {

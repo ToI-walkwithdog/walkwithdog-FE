@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { routeForFailure } from "../../api/auth";
+import type { ApiFailure } from "../../api/client";
+import { errorMessage } from "../../api/errorMessages";
+import { fetchActiveWalk, startWalk } from "../../api/walks";
+import { getVerifiedRequestId, setVerifiedRequestId } from "../../api/walkSession";
 import { Screen } from "../../components/Screen";
-import { useMockSession } from "../../context/MockSession";
 import { GradientView } from "../../components/GradientView";
 import { gradientButtonWarm } from "../../theme/gradients";
 import { UserInfoBackground } from "../../components/UserInfoBackground";
@@ -19,7 +23,10 @@ const ITEMS = [
 
 export default function WalkChecklistScreen() {
   const router = useRouter();
-  const { clearMarkers } = useMockSession();
+  // 4-1에서 보호소 코드를 확인한 예약이다. 없으면 코드 입력부터 다시 한다.
+  const requestId = getVerifiedRequestId();
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
   const [checked, setChecked] = useState<boolean[]>([
     false,
     false,
@@ -28,6 +35,63 @@ export default function WalkChecklistScreen() {
   ]);
   const checkedCount = checked.filter(Boolean).length;
   const complete = checkedCount === ITEMS.length;
+
+  useEffect(() => {
+    if (requestId === null) router.replace("/4-1");
+  }, [requestId, router]);
+
+  // 응답이 유실됐거나 이미 시작된 경우를 서버의 진행 중 산책으로 확인한다.
+  const recoverActiveWalk = async (id: number): Promise<boolean> => {
+    const active = await fetchActiveWalk();
+    if (active.ok && active.data.walk_request_id === id) {
+      router.replace("/5-1");
+      return true;
+    }
+    return false;
+  };
+
+  const handleStartFailure = async (id: number, failure: ApiFailure) => {
+    const route = await routeForFailure(failure);
+    if (route) {
+      router.replace(route);
+      return;
+    }
+    switch (failure.code) {
+      case "WALK_START_CODE_REQUIRED":
+        // 코드가 만료됐거나 다시 발급됐다. 코드를 다시 확인한다.
+        setVerifiedRequestId(null);
+        Alert.alert("알림", errorMessage(failure.code), [
+          { text: "확인", onPress: () => router.replace("/4-1") },
+        ]);
+        return;
+      case "WALK_START_BOOKING_NOT_ELIGIBLE":
+        Alert.alert("알림", errorMessage(failure.code), [
+          { text: "확인", onPress: () => router.replace("/8-1") },
+        ]);
+        return;
+    }
+    // 이미 시작됐거나(WALK_START_ALREADY_STARTED), 충돌했거나(WALK_START_RETRYABLE),
+    // 응답을 받지 못한 경우는 서버에 산책이 생겼는지 먼저 확인한다.
+    if (await recoverActiveWalk(id)) return;
+    Alert.alert("알림", errorMessage(failure.code));
+  };
+
+  const start = async () => {
+    if (requestId === null || startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
+    try {
+      const result = await startWalk(requestId);
+      if (result.ok) {
+        router.replace("/5-1");
+        return;
+      }
+      await handleStartFailure(requestId, result);
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
+  };
 
   const toggleItem = (index: number) => {
     setChecked((current) =>
@@ -117,19 +181,13 @@ export default function WalkChecklistScreen() {
                 <Pressable
                   accessibilityLabel="산책 시작하기"
                   accessibilityRole="button"
-                  onPress={() => {
-                    Alert.alert("목업 산책", "시간·거리·지도 경로는 예시이며 실제 산책은 기록되지 않아요.", [
-                      { text: "취소", style: "cancel" },
-                      { text: "확인", onPress: () => {
-                        clearMarkers();
-                        router.push("/5-1");
-                      } },
-                    ]);
-                  }}
-                  style={styles.startButtonPressable}
+                  accessibilityState={{ disabled: starting }}
+                  disabled={starting}
+                  onPress={() => void start()}
+                  style={[styles.startButtonPressable, starting && styles.startingButton]}
                 >
                   <Text style={[styles.startButtonText, styles.startButtonTextComplete]}>
-                    시작하개!
+                    {starting ? "시작하는 중..." : "시작하개!"}
                   </Text>
                 </Pressable>
               </GradientView>
@@ -312,6 +370,9 @@ const styles = StyleSheet.create({
     left: 106,
     position: "absolute",
     width: 218,
+  },
+  startingButton: {
+    opacity: 0.5,
   },
   startButtonPressable: {
     alignItems: "center",

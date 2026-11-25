@@ -1,15 +1,39 @@
+import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { getWalkContext } from "../../api/walkSession";
+import { GPS_LOST_AFTER_MS, reconnectLocation } from "../../api/walkTracker";
 import { Icon } from "../../components/Icon";
 import { Screen } from "../../components/Screen";
 import { GradientView } from "../../components/GradientView";
 import { gradientButtonWarm, gradientCardCream } from "../../theme/gradients";
 import { colors, radii, typography } from "../../theme/tokens";
 import { fontFamilies } from "../../theme/typography";
+import { useWalkTracker } from "./useWalkTracker";
+import { endWalkWithConfirm } from "./walkFlow";
 
 export default function GPSLostScreen() {
   const router = useRouter();
+  const { snapshot, now, stats } = useWalkTracker();
+  const context = getWalkContext();
+  const [endBusy, setEndBusy] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+
+  // 새 위치가 다시 들어오면 산책 화면으로 돌아간다. 마지막 위치를 받은 지 오래되지 않았다는 뜻이다.
+  const signalBack =
+    snapshot.lastFixReceivedAt !== null && now - snapshot.lastFixReceivedAt < GPS_LOST_AFTER_MS;
+  useEffect(() => {
+    if (signalBack && reconnecting) router.replace("/5-1");
+  }, [reconnecting, router, signalBack]);
+
+  const reconnect = async () => {
+    if (reconnecting) return;
+    setReconnecting(true);
+    await reconnectLocation();
+    // 위치 권한을 거부했으면 신호가 돌아오지 않는다. 같은 화면에서 다시 시도할 수 있게 푼다.
+    setTimeout(() => setReconnecting(false), GPS_LOST_AFTER_MS);
+  };
 
   return (
     <Screen backgroundColor={colors.white} safeAreaEdges={[]} testID="screen-5-3">
@@ -34,12 +58,16 @@ export default function GPSLostScreen() {
           </Text>
 
           <GradientView token={gradientCardCream} style={styles.recordCard}>
-            <Text style={styles.recordTitle}>콩이 · 행복 보호소</Text>
+            <Text style={styles.recordTitle}>
+              {context ? `${context.dogName} · ${context.shelterName}` : "산책 중"}
+            </Text>
             <View style={styles.recordStatsRow}>
-              <Text style={styles.recordTime}>24:15</Text>
-              <Text style={styles.recordDistance}>1.8 km</Text>
+              <Text style={styles.recordTime}>{stats.time}</Text>
+              <Text style={styles.recordDistance}>{stats.distance}</Text>
             </View>
-            <Text style={styles.recordHint}>목업 예시 기록</Text>
+            <Text style={styles.recordHint}>
+              {snapshot.permission === "denied" ? "위치 권한이 꺼져 있어요" : "지금까지의 기록"}
+            </Text>
           </GradientView>
 
           <View style={styles.noticeCard}>
@@ -60,19 +88,27 @@ export default function GPSLostScreen() {
           <Pressable
             accessibilityLabel="위치 다시 연결하기"
             accessibilityRole="button"
-            onPress={() => Alert.alert("위치 재연결 미지원", "실시간 위치 추적과 재연결은 아직 연결되지 않았어요.")}
-            style={styles.primaryPressable}
+            accessibilityState={{ disabled: reconnecting }}
+            disabled={reconnecting}
+            onPress={() => void reconnect()}
+            style={[styles.primaryPressable, reconnecting && styles.disabledAction]}
           >
-            <Text style={styles.primaryText}>위치 다시 연결하기</Text>
+            <Text style={styles.primaryText}>
+              {reconnecting ? "위치 확인 중..." : "위치 다시 연결하기"}
+            </Text>
           </Pressable>
           </GradientView>
           <Pressable
             accessibilityLabel="기존 기록으로 산책 종료"
             accessibilityRole="button"
-            onPress={() => router.replace("/6-1")}
+            accessibilityState={{ disabled: endBusy }}
+            disabled={endBusy}
+            onPress={() => endWalkWithConfirm(router, setEndBusy)}
             style={styles.secondary}
           >
-            <Text style={styles.secondaryText}>기존 기록으로 산책 종료</Text>
+            <Text style={styles.secondaryText}>
+              {endBusy ? "종료 중..." : "기존 기록으로 산책 종료"}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -81,6 +117,7 @@ export default function GPSLostScreen() {
 }
 
 const styles = StyleSheet.create({
+  disabledAction: { opacity: 0.5 },
   primaryPressable: { alignItems: "center", height: 53, justifyContent: "center", width: 335 },
   root: {
     flex: 1,
